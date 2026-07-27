@@ -3,6 +3,8 @@
 namespace Database\Seeders;
 
 use App\Models\Account;
+use App\Models\ResellerBranding;
+use App\Models\ResellerDomain;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 
@@ -36,6 +38,15 @@ class HierarchySeeder extends Seeder
             ['name' => 'Reseller A Owner', 'password' => bcrypt('password'), 'account_id' => $resellerA->id, 'role' => 'owner'],
         );
 
+        ResellerDomain::withoutGlobalScopes()->firstOrCreate(
+            ['domain' => 'acme.localhost'],
+            ['reseller_account_id' => $resellerA->id, 'ssl_status' => 'active', 'verified_at' => now()],
+        );
+        ResellerBranding::withoutGlobalScopes()->updateOrCreate(
+            ['reseller_account_id' => $resellerA->id],
+            ['product_name' => 'Acme CRM', 'primary_color' => '#1976D2', 'support_email' => 'support@acme.example'],
+        );
+
         $clientA1 = Account::withoutGlobalScopes()->firstOrCreate(
             ['account_type' => Account::TYPE_CLIENT, 'name' => 'Acme Client One', 'parent_account_id' => $resellerA->id],
         );
@@ -50,6 +61,15 @@ class HierarchySeeder extends Seeder
         User::withoutGlobalScopes()->updateOrCreate(
             ['email' => 'reseller-b@example.com'],
             ['name' => 'Reseller B Owner', 'password' => bcrypt('password'), 'account_id' => $resellerB->id, 'role' => 'owner'],
+        );
+
+        ResellerDomain::withoutGlobalScopes()->firstOrCreate(
+            ['domain' => 'beta.localhost'],
+            ['reseller_account_id' => $resellerB->id, 'ssl_status' => 'active', 'verified_at' => now()],
+        );
+        ResellerBranding::withoutGlobalScopes()->updateOrCreate(
+            ['reseller_account_id' => $resellerB->id],
+            ['product_name' => 'Beta CRM', 'primary_color' => '#43A047', 'support_email' => 'support@beta.example'],
         );
 
         $clientB1 = Account::withoutGlobalScopes()->firstOrCreate(

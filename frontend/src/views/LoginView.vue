@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useBrandingStore } from '@/stores/branding'
 
 const email = ref('admin@example.com')
 const password = ref('')
@@ -9,6 +10,7 @@ const error = ref('')
 const loading = ref(false)
 
 const auth = useAuthStore()
+const branding = useBrandingStore()
 const router = useRouter()
 
 async function submit() {
@@ -30,7 +32,10 @@ async function submit() {
     <v-row align="center" justify="center">
       <v-col cols="12" sm="8" md="4">
         <v-card elevation="4">
-          <v-card-title>Sign in</v-card-title>
+          <v-card-title class="d-flex align-center ga-2">
+            <v-img v-if="branding.logoUrl" :src="branding.logoUrl" max-height="32" max-width="32" />
+            {{ branding.productName }}
+          </v-card-title>
           <v-card-text>
             <v-alert v-if="error" type="error" density="compact" class="mb-4">{{ error }}</v-alert>
             <v-form @submit.prevent="submit">

@@ -37,3 +37,11 @@ Route::get('/user', function (Request $request) {
 Route::get('/accounts', function (Request $request) {
     return Account::query()->get(['id', 'name', 'account_type', 'parent_account_id']);
 })->middleware('auth:sanctum');
+
+Route::get('/branding', function (Request $request) {
+    $reseller = $request->attributes->get('reseller_account');
+
+    return $reseller
+        ? $reseller->branding
+        : ['product_name' => 'CRM Platform', 'primary_color' => '#1976D2', 'support_email' => null];
+});

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Auth;
 
 class Account extends Model
@@ -49,6 +50,16 @@ class Account extends Model
     public function users(): HasMany
     {
         return $this->hasMany(User::class);
+    }
+
+    public function domains(): HasMany
+    {
+        return $this->hasMany(ResellerDomain::class, 'reseller_account_id');
+    }
+
+    public function branding(): HasOne
+    {
+        return $this->hasOne(ResellerBranding::class, 'reseller_account_id');
     }
 
     /**
