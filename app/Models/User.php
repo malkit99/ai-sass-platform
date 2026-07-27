@@ -5,6 +5,7 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -15,6 +16,16 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable;
 
     /**
+     * Valid roles per account tier (see .claude/build-plan/08-employees-roles.md).
+     * Fixed sets on purpose — not a dynamic permission builder.
+     */
+    public const ROLES = [
+        Account::TYPE_SUPER_ADMIN => ['owner', 'platform_support', 'platform_sales', 'platform_billing', 'platform_developer'],
+        Account::TYPE_RESELLER => ['owner', 'support_agent', 'sales', 'billing'],
+        Account::TYPE_CLIENT => ['owner', 'agent'],
+    ];
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
@@ -23,6 +34,8 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'account_id',
+        'role',
     ];
 
     /**
@@ -46,5 +59,15 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    public function account(): BelongsTo
+    {
+        return $this->belongsTo(Account::class);
+    }
+
+    public function isOwner(): bool
+    {
+        return $this->role === 'owner';
     }
 }

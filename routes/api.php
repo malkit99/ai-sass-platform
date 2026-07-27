@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Account;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -31,4 +32,8 @@ Route::post('/logout', function (Request $request) {
 
 Route::get('/user', function (Request $request) {
     return $request->user();
+})->middleware('auth:sanctum');
+
+Route::get('/accounts', function (Request $request) {
+    return Account::query()->get(['id', 'name', 'account_type', 'parent_account_id']);
 })->middleware('auth:sanctum');
