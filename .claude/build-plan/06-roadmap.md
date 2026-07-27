@@ -2,13 +2,15 @@
 
 Cloning all ~20 modules from the reference app at once is not realistic as a first build. Suggested phased approach — confirm/adjust before starting implementation.
 
-## Phase 0 — Foundation (2–3 weeks — expanded for reseller model)
-- Laravel project scaffold, multi-tenant `account_id` scoping, auth, plan/trial model
-- **Reseller hierarchy from day one**: `account_type` (super_admin/reseller/client) + `parent_account_id`, tenant scoping keyed to the account subtree (see `07-reseller-model.md`) — retrofitting this later is a painful migration, so it's pulled forward from the original Phase 5
-- **White-label basics**: custom domain resolution (CNAME → reseller), per-reseller branding (logo/colors/product name) injected into the shared UI shell
-- **Employee roles for Super Admin + Reseller tiers** (fixed role sets, not a custom permission builder) — see `08-employees-roles.md`. Goes in now alongside the hierarchy work since auth without any role concept would need reworking later.
-- Base dashboard shell, sidebar nav matching module list
-- CI, deploy pipeline, staging environment
+## Phase 0 — Foundation — ✅ COMPLETE
+- ✅ Laravel 12 project scaffold (MySQL, Redis/predis, Sanctum SPA+token auth) — decoupled Vue 3 SPA (Router+Pinia+Vuetify)
+- ✅ **Reseller hierarchy**: `account_type` (super_admin/reseller/client) + `parent_account_id`, tenant scoping via a global scope on `Account` (+ reusable `BelongsToTenant` trait for future domain models) — verified: Super Admin sees everything, each reseller sees only its own subtree, each client sees only itself (`tests/Feature/TenantScopingTest.php`)
+- ✅ **White-label**: `reseller_domains` + `reseller_branding` tables, `ResolveResellerDomain` middleware, `/api/branding` endpoint, and the SPA actually fetches + applies it (title, theme color, logo) — verified in-browser on `acme.localhost` / `beta.localhost`
+- ✅ **Employee roles**: `User::ROLES` per tier, validated on save, enforced via `AccountPolicy` (403 for disallowed actions, 404 for out-of-subtree accounts via the tenant scope)
+- ✅ **Plan/trial model**: seeded plans with `limits` json, `EnsureTrialNotExpired` middleware (402 once expired), reseller client-account quota enforcement (422 once limit reached)
+- ✅ Dashboard shell: `AppShell.vue` with sidebar nav listing every module from `01-feature-inventory.md` (only Dashboard active; rest "Coming soon" pending their phase)
+- ✅ CI: GitHub Actions running backend tests + frontend build check on every push/PR
+- ⏭️ Deploy pipeline / staging environment — deliberately deferred: needs a real hosting decision (VPS, Forge, Vapor, etc.) before there's anything to configure; revisit when ready to put this in front of real users
 
 **Billing model confirmed:** resellers collect their own client payments via Stripe Connect (their own bank account, not yours) — see `07-reseller-model.md` billing section. Platform→reseller billing is a separate, centralized Stripe subscription on your own account.
 
