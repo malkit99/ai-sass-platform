@@ -1,0 +1,18 @@
+# 05 — Third-Party Integrations
+
+| Integration | Used for | Notes / cost implication |
+|---|---|---|
+| Meta WhatsApp Cloud API | **CONFIRMED for v1.** "Meta Cloud API" module, official WhatsApp send/receive | Free tier + per-conversation pricing from Meta; requires a verified Meta Business + app review for production use. **For the reseller model specifically: to let each of your resellers' clients connect their own official WhatsApp Business number under your platform, you need to become a Meta Tech Provider / Solution Partner** — a formal Meta approval process (the reference app has a dedicated "Tech Provider Guide" and "SaaS Provider Application" section, confirming this is a real prerequisite, not optional polish). Start this application early — Meta approval can take weeks and gates any multi-client official WhatsApp rollout. |
+| LLM routing gateway (e.g. OpenRouter) | AI Chatbot, AI lead scoring, AI Brain/Intents, `POST /api/v2/ai/chat` | The reference app's own API docs show requests like `{"model": "openai/gpt-4o-mini"}` — a `provider/model` string format — meaning it routes through a multi-provider AI gateway rather than calling one vendor's SDK directly. Worth adopting the same pattern (e.g. via OpenRouter, or a thin internal abstraction) so the platform isn't locked to one LLM vendor as AI features expand across modules. |
+| Unofficial WhatsApp bridge (e.g. Baileys) | **CONFIRMED for v1.** The separate "Whatsapp" module (QR-session style, no official approval needed) | Higher ban risk, explains why "Number Warmer" exists as a module — budget time for anti-ban pacing logic. Since this is in v1 now, plan basic anti-ban pacing (rate limits, warm-up delay) alongside it rather than deferring to Phase 5, even if the full "Number Warmer" module UI comes later. |
+| Facebook & Instagram Graph API | Social Media module (posting, inbox, comments), Social Lead Master (lead ads) | Requires Meta app review for several permissions (pages_messaging, instagram_manage_messages, leads_retrieval) |
+| Google Sheets API | Import/export/sync module | OAuth2, relatively simple |
+| Telephony provider (CallerDesk or equivalent, e.g. Twilio/Exotel/Plivo) | CallerDesk module — dialer, IVR, recordings, call logs | Per-minute billing; pick a provider with a good IVR-flow / webhook API if building your own flow builder |
+| AI voice engine (reference app uses "Ultravox") | AI Agents / real-time AI voice calls | Real-time speech-to-speech AI voice is a specialized, costed API — budget separately from text LLM costs |
+| LLM provider (OpenAI/Anthropic/etc.) | AI Chatbot, Chat Agents, AI lead scoring, AI Appointments | Anthropic's Claude API is a natural fit if this ecosystem is already in use elsewhere — see the `claude-api` skill for current model/pricing reference |
+| SMTP relay(s) (e.g. SES, Postmark, SendGrid) | Email Marketing sending | Multiple SMTP servers supported in reference app — likely for deliverability/IP rotation at scale |
+| WooCommerce REST API | Commerce ↔ WooCommerce bridge, order notifications | Needs API keys generated from the merchant's WooCommerce store |
+| Payment gateway (Stripe/Razorpay/etc.) | Commerce payments, subscription billing for your own plans | Pick based on target market's supported gateways |
+
+## Sequencing recommendation
+Start with the integrations that are officially supported and cheap to set up (Meta Cloud API, SMTP, Google Sheets) before the higher-cost/higher-complexity ones (telephony + AI voice), since the CRM/messaging/email core delivers most of the day-to-day value and can be validated without the voice stack.
