@@ -91,13 +91,21 @@ class Account extends Model
         static::addGlobalScope('tenant', function ($builder) {
             $user = Auth::user();
 
-            if (! $user || ! $user->account) {
+            if (! $user || ! $user->account_id) {
+                return;
+            }
+
+            // Bypasses the account() relation (and thus this same scope) deliberately —
+            // fetches the raw row directly so there's no risk of recursive scope application.
+            $account = self::withoutGlobalScopes()->find($user->account_id);
+
+            if (! $account) {
                 return;
             }
 
             // Super Admin sees every account; everyone else is scoped to their own subtree.
-            if ($user->account->account_type !== self::TYPE_SUPER_ADMIN) {
-                $builder->whereIn('id', $user->account->subtreeIds());
+            if ($account->account_type !== self::TYPE_SUPER_ADMIN) {
+                $builder->whereIn('id', $account->subtreeIds());
             }
         });
     }

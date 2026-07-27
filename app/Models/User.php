@@ -70,4 +70,39 @@ class User extends Authenticatable
     {
         return $this->role === 'owner';
     }
+
+    /**
+     * The raw account row, bypassing the account() relation and any global
+     * scope on Account deliberately — safe to call from inside scope closures.
+     */
+    public function rawAccount(): ?Account
+    {
+        return Account::withoutGlobalScopes()->find($this->account_id);
+    }
+
+    /**
+     * The tier of the account this user belongs to (super_admin/reseller/client).
+     */
+    public function accountType(): ?string
+    {
+        return $this->rawAccount()?->account_type;
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (self $user) {
+            if (! $user->account_id || ! $user->role) {
+                return;
+            }
+
+            $accountType = Account::withoutGlobalScopes()->find($user->account_id)?->account_type;
+            $validRoles = self::ROLES[$accountType] ?? [];
+
+            if (! in_array($user->role, $validRoles, true)) {
+                throw new \InvalidArgumentException(
+                    "Role '{$user->role}' is not valid for an account of type '{$accountType}'."
+                );
+            }
+        });
+    }
 }

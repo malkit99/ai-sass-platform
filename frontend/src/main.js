@@ -13,8 +13,10 @@ app.use(pinia)
 app.use(router)
 app.use(vuetify)
 
-const branding = useBrandingStore()
-await branding.fetch()
-vuetify.theme.themes.value.light.colors.primary = branding.primaryColor
+;(async () => {
+  const branding = useBrandingStore()
+  await branding.fetch()
+  vuetify.theme.themes.value.light.colors.primary = branding.primaryColor
 
-app.mount('#app')
+  app.mount('#app')
+})()

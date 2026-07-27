@@ -20,12 +20,20 @@ trait BelongsToTenant
         static::addGlobalScope('tenant', function ($builder) {
             $user = Auth::user();
 
-            if (! $user || ! $user->account) {
+            if (! $user || ! $user->account_id) {
                 return;
             }
 
-            if ($user->account->account_type !== Account::TYPE_SUPER_ADMIN) {
-                $builder->whereIn('account_id', $user->account->subtreeIds());
+            // Bypasses the account() relation deliberately — fetches the raw row
+            // directly to avoid any risk of recursive scope application.
+            $account = Account::withoutGlobalScopes()->find($user->account_id);
+
+            if (! $account) {
+                return;
+            }
+
+            if ($account->account_type !== Account::TYPE_SUPER_ADMIN) {
+                $builder->whereIn('account_id', $account->subtreeIds());
             }
         });
 
