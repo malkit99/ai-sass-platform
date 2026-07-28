@@ -7,10 +7,10 @@ Not exhaustive — this is the entity set needed to support the MVP + near-term 
 - `users` — id, account_id, name, email, password_hash, role
 - `plans` — id, name, price, limits (json: max_numbers, max_seats, features[])
 
-## CRM
-- `pipelines` — id, account_id, name (supports the "CRM Pipelines" multi-pipeline module)
+## CRM — ✅ built (Phase 1, backend + UI — see `06-roadmap.md`)
+- `pipelines` — id, account_id, name (supports the "CRM Pipelines" multi-pipeline module). A default 5-stage pipeline (New Lead/Contacted/Qualified/Won/Lost) is auto-provisioned when a client account is created.
 - `pipeline_stages` — id, pipeline_id, name, order
-- `leads` — id, account_id, pipeline_id, stage_id, name, contact info, source (facebook/instagram/google/webhook/manual), ai_score, is_hot, last_activity_at
+- `leads` — id, account_id, pipeline_id, stage_id, name, phone, email, description (text, added post-MVP for lead notes), source (facebook/instagram/google/webhook/manual), ai_score, is_hot, last_activity_at. **Phone is stored digits-only with country code, no `+`** (e.g. `919876543210`) — the format WhatsApp's Cloud API and unofficial clients expect — validated both client- and server-side with `libphonenumber` (real validity check, not just a digit-count pattern).
 - `deals` — id, lead_id, value, currency, status (open/won/lost)
 - `labels` — id, account_id, name, color
 - `lead_labels` — pivot
@@ -54,5 +54,6 @@ Not exhaustive — this is the entity set needed to support the MVP + near-term 
 ## Shared/cross-cutting
 - `webhooks_inbound_log` — id, provider, payload, verified, processed_at (audit trail, useful for debugging integration issues)
 - `api_tokens` — id, account_id, provider, encrypted_credentials, scopes
+- `activity_logs` — ✅ built. id, account_id, user_id (nullable), subject_type, subject_id (polymorphic, no FK constraint so the entry survives after the subject is deleted), action, description, created_at. General-purpose audit trail — `ActivityLog::record($subject, $action, $description)` from any controller; currently wired into lead create/update/delete (`app/Models/ActivityLog.php`). Pruned daily past 90 days (`app/Console/Commands/PruneActivityLogs.php`) — see `09-deployment-ops.md`. Viewable via a drawer in the app bar (history icon).
 
 This maps cleanly onto the module inventory in doc 01 — each top-level sidebar module corresponds to one or two of the entity groups above, which is a useful sanity check when scoping actual build tickets.
