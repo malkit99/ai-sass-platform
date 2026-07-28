@@ -7,7 +7,7 @@
 // translate it via `t(item.titleKey)` rather than showing a raw title.
 export const modules = [
   { titleKey: 'nav.dashboard', icon: 'mdi-view-dashboard', color: '#1976D2', route: 'dashboard', enabled: true },
-  { titleKey: 'nav.whatsapp', icon: 'mdi-whatsapp', color: '#25D366', enabled: false },
+  { titleKey: 'nav.whatsapp', icon: 'mdi-whatsapp', color: '#25D366', route: 'whatsapp', enabled: true },
   { titleKey: 'nav.callerDesk', icon: 'mdi-phone', color: '#5C6BC0', enabled: false },
   { titleKey: 'nav.emailMarketing', icon: 'mdi-email-outline', color: '#EF5350', enabled: false },
   { titleKey: 'nav.liveChat', icon: 'mdi-chat-outline', color: '#42A5F5', enabled: false },
@@ -23,7 +23,7 @@ export const modules = [
   { titleKey: 'nav.chatAgents', icon: 'mdi-account-voice', color: '#5E35B1', enabled: false },
   { titleKey: 'nav.socialLeadMaster', icon: 'mdi-magnet', color: '#D81B60', enabled: false },
   { titleKey: 'nav.accountManager', icon: 'mdi-account-multiple-outline', color: '#3949AB', enabled: false },
-  { titleKey: 'nav.fileManager', icon: 'mdi-folder-outline', color: '#6D4C41', enabled: false },
+  { titleKey: 'nav.fileManager', icon: 'mdi-folder-outline', color: '#6D4C41', route: 'file-manager', enabled: true },
   { titleKey: 'nav.tools', icon: 'mdi-tools', color: '#546E7A', enabled: false },
   { titleKey: 'nav.invoices', icon: 'mdi-receipt-text-outline', color: '#E53935', enabled: false },
   { titleKey: 'nav.googleSheets', icon: 'mdi-google-spreadsheet', color: '#2E7D32', enabled: false },

@@ -35,4 +35,12 @@ return [
         ],
     ],
 
+    'whatsapp_bridge' => [
+        // Internal-only Node/Baileys service — see .claude/build-plan/11-unofficial-whatsapp.md.
+        // Never expose this base_url publicly; Laravel is the only intended caller.
+        'base_url' => env('WHATSAPP_BRIDGE_URL', 'http://127.0.0.1:3001'),
+        'api_key' => env('WHATSAPP_BRIDGE_API_KEY'),
+        'webhook_secret' => env('WHATSAPP_BRIDGE_WEBHOOK_SECRET'),
+    ],
+
 ];

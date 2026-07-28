@@ -4,6 +4,8 @@ import DefaultLayout from '@layouts/DefaultLayout.vue'
 import authRoutes from './routes/auth'
 import dashboardRoutes from './routes/dashboard'
 import crmRoutes from './routes/crm'
+import whatsappRoutes from './routes/whatsapp'
+import fileManagerRoutes from './routes/file-manager'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -13,7 +15,7 @@ const router = createRouter({
       path: '/',
       component: DefaultLayout,
       meta: { requiresAuth: true },
-      children: [...dashboardRoutes, ...crmRoutes],
+      children: [...dashboardRoutes, ...crmRoutes, ...whatsappRoutes, ...fileManagerRoutes],
     },
   ],
 })

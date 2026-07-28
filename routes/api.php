@@ -55,6 +55,11 @@ Route::middleware(['auth:sanctum', 'trial.active'])->group(function () {
     Route::get('/activity-logs', [ActivityLogController::class, 'index']);
 });
 
+// Module-wise API routes — each module owns its own file under routes/api/,
+// wired in here with a matching URL prefix (see backend-modular-controllers memory).
+Route::prefix('whatsapp')->name('whatsapp.')->group(base_path('routes/api/whatsapp.php'));
+Route::prefix('media')->name('media.')->group(base_path('routes/api/media.php'));
+
 Route::get('/branding', function (Request $request) {
     $reseller = $request->attributes->get('reseller_account');
 

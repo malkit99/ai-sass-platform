@@ -57,6 +57,21 @@ html, body {
    own dialogs (see @core/plugins/sweetalert.js). */
 .app-swal-popup {
   border-radius: 12px !important;
+  padding-bottom: 1.25rem !important;
+}
+
+.app-swal-title {
+  font-size: 1.125rem !important;
+  margin-top: 0.5rem !important;
+}
+
+.app-swal-text {
+  font-size: 0.875rem !important;
+}
+
+.app-swal-actions {
+  gap: 12px;
+  margin-top: 1.25rem !important;
 }
 
 .app-swal-btn {
@@ -64,6 +79,7 @@ html, body {
   text-transform: uppercase;
   font-weight: 500;
   padding: 0 20px !important;
+  margin: 0 !important;
 }
 
 .app-swal-btn--confirm {

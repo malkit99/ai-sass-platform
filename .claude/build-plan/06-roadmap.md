@@ -20,9 +20,9 @@ Cloning all ~20 modules from the reference app at once is not realistic as a fir
 - ✅ **Activity log**: general-purpose audit trail (`activity_logs`, not CRM-specific — reusable by any future module), auto-pruned past 90 days; wired into lead create/update/delete; viewable via an app-bar drawer. Not in the original phase scope, added because it's needed everywhere eventually.
 - ✅ **Reusable alert system**: Pinia-backed snackbar (success/warning/error/info) + themed SweetAlert2, callable from anywhere — established as the standard pattern for any future form/action feedback, not just CRM.
 - ✅ **Frontend platform work** (not CRM-specific, but built alongside it and now the standing convention for every future module — see `frontend-modular-architecture` memory / `@layouts`+`@core` structure): modular `@layouts`/`@core`/per-module `views`+`stores`+`routes` architecture; full light/dark/system theming with a right-side customizer (skin, primary color, content width); vue-i18n localization (English/Hindi/Spanish/French) across the app chrome; mobile-responsive shell (collapsible nav drawer, collapsing app-bar search, Kanban columns that scroll within a min/max height range).
-- ⏭️ Messaging: **both** WhatsApp connection types — not started —
-  - Meta WhatsApp Cloud API (official, needs Meta Business verification, lower risk)
-  - Unofficial QR-session bridge, e.g. Baileys (faster per-number setup, no Meta approval, but needs basic rate-limiting/warm-up pacing from the start to reduce ban risk — see `05-integrations.md`)
+- 🔶 Messaging: **both** WhatsApp connection types —
+  - Meta WhatsApp Cloud API (official, needs Meta Business verification, lower risk) — not started
+  - Unofficial QR-session bridge (Baileys) — ✅ sub-phase 1a built (2026-07-28): connect via QR/pairing code, single send, inbound webhook, credit metering, module-wise backend + frontend. Sub-phases 1b (bulk/automation), 1c (templates/export/link-gen/call-responder/public API), 1d (bot builder) not started — full plan in `11-unofficial-whatsapp.md`
   - Build both behind the same `channels` abstraction (see `04-data-model.md`) so the rest of the app (CRM, inbox, automation) doesn't care which one a given number uses
 - ⏭️ Omnichannel-lite: single unified inbox spanning both WhatsApp connection types — not started
 - ⏭️ Basic dashboard stats — not started (the CRM stat cards exist; a real cross-module dashboard doesn't yet — `DashboardView.vue` is still the Phase-0 placeholder). The CRM's "Unread" stat is hardcoded to 0 pending this.

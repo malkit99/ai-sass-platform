@@ -17,14 +17,18 @@ Without this single line, **every** scheduled task below silently never runs —
 | Command | Schedule | Purpose | Added |
 |---|---|---|---|
 | `app:prune-activity-logs` | daily | Deletes `activity_logs` rows older than 90 days (`app/Console/Commands/PruneActivityLogs.php`) so the audit trail table doesn't grow unbounded across every tenant. | 2026-07-28 |
+| `app:sync-whatsapp-channel-statuses` | every 5 minutes | Reconciles `channels.status` against the bridge's live connection state (`app/Console/Commands/SyncWhatsappChannelStatuses.php`) — a bridge crash/restart never fires a disconnect webhook, so a channel can sit marked "connected" long after the bridge lost that session; this catches the drift proactively instead of only surfacing it as a confusing error the next time someone tries to send. | 2026-07-28 |
+| `app:process-recurring-whatsapp-campaigns` | every 15 minutes | Spins off the next scheduled run for bulk campaigns with "Enable Recurring Schedule" set (`app/Console/Commands/ProcessRecurringWhatsappCampaigns.php`) — clones the original campaign's config into a fresh child campaign + recipient batch each cycle and pushes `next_run_at` forward by the chosen frequency (daily/weekly/monthly). Without this cron entry, a recurring campaign's `next_run_at` just sits there forever and nothing new ever gets sent. | 2026-07-28 |
 
 ## Queue workers
 
-None yet — no jobs are currently dispatched to a queue (`ShouldQueue` isn't used anywhere in the codebase as of this writing). `03-architecture.md` plans Horizon-managed queues (`realtime`/`bulk`/`reports`) once WhatsApp/email bulk-sending (Phase 1–2) is built. **When that lands, add the Horizon supervisor process (or `php artisan queue:work`) as a required always-running process here** — unlike scheduled commands, queue workers need their own persistent process (systemd service / Supervisor config), not a cron entry.
+`SendCampaignMessageJob` (`app/Jobs/Whatsapp/SendCampaignMessageJob.php`) is queued via `ShouldQueue` — one job per bulk-campaign recipient, dispatched with a computed delay for anti-ban pacing (see `11-unofficial-whatsapp.md`). **Requires a running queue worker** (`php artisan queue:work`, or Horizon once installed per `03-architecture.md`'s `realtime`/`bulk`/`reports` queue plan) as an always-on process — without one, campaign messages are queued but never actually sent. Uses the default `QUEUE_CONNECTION=redis` connection/queue.
 
 ## Other always-on processes
 
-None yet. Revisit when Reverb (real-time/WebSockets, see `03-architecture.md`) is added — it needs its own persistent server process too.
+- **`whatsapp-bridge/` (Node/Baileys service)** — added 2026-07-28, see `11-unofficial-whatsapp.md`. Must run as its own always-on process (systemd service / PM2), separate from PHP-FPM/nginx, listening only on an internal address (`WHATSAPP_BRIDGE_URL` in Laravel's `.env` / `PORT` in the bridge's own `.env` — dev default `127.0.0.1:3001`). Holds live Baileys socket connections per WhatsApp instance plus their session auth state under `whatsapp-bridge/sessions/` — that directory must persist across deploys/restarts (back it up or move it to a persistent volume before this goes to production) or every connected number will need to re-scan its QR code. Dev: `cd whatsapp-bridge && npm run dev`.
+
+Revisit when Reverb (real-time/WebSockets, see `03-architecture.md`) is added — it needs its own persistent server process too.
 
 ---
 **Why this file exists:** cron/scheduled-job configuration lives on the server, not in the deployed code, so it's invisible to `git diff` and easy to forget when standing up a new environment or auditing an existing one. Treat this as the source of truth for "what background jobs does this app depend on" — check it against the actual server config during any deploy or environment setup.

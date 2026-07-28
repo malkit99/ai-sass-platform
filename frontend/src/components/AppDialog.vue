@@ -1,7 +1,7 @@
 <script setup>
 defineProps({
   modelValue: { type: Boolean, required: true },
-  title: { type: String, required: true },
+  title: { type: String, default: '' },
   maxWidth: { type: [String, Number], default: 480 },
 })
 defineEmits(['update:modelValue'])
@@ -10,7 +10,15 @@ defineEmits(['update:modelValue'])
 <template>
   <v-dialog :model-value="modelValue" :max-width="maxWidth" @update:model-value="$emit('update:modelValue', $event)">
     <v-card>
-      <v-card-title class="d-flex align-center justify-space-between pa-4">
+      <div v-if="$slots.header" class="position-relative">
+        <slot name="header" />
+        <v-btn
+          icon="mdi-close" variant="text" density="comfortable" color="white"
+          class="position-absolute" style="top: 8px; right: 8px"
+          @click="$emit('update:modelValue', false)"
+        />
+      </div>
+      <v-card-title v-else class="d-flex align-center justify-space-between pa-4">
         <span class="text-h6">{{ title }}</span>
         <v-btn icon="mdi-close" variant="text" density="comfortable" @click="$emit('update:modelValue', false)" />
       </v-card-title>
