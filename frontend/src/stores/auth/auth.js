@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import api, { ensureCsrfCookie } from '@/lib/api'
+import api, { ensureCsrfCookie } from '@core/utils/api'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({

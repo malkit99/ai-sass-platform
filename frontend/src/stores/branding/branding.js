@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import api from '@/lib/api'
+import api from '@core/utils/api'
 
 export const useBrandingStore = defineStore('branding', {
   state: () => ({

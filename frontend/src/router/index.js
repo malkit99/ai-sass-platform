@@ -1,18 +1,19 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-import AppShell from '@/layouts/AppShell.vue'
+import { useAuthStore } from '@/stores/auth/auth'
+import DefaultLayout from '@layouts/DefaultLayout.vue'
+import authRoutes from './routes/auth'
+import dashboardRoutes from './routes/dashboard'
+import crmRoutes from './routes/crm'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { guestOnly: true } },
+    ...authRoutes,
     {
       path: '/',
-      component: AppShell,
+      component: DefaultLayout,
       meta: { requiresAuth: true },
-      children: [
-        { path: '', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
-      ],
+      children: [...dashboardRoutes, ...crmRoutes],
     },
   ],
 })
