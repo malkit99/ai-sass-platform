@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\AccountController;
+use App\Http\Controllers\Api\LeadController;
+use App\Http\Controllers\Api\PipelineController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -40,6 +42,14 @@ Route::middleware(['auth:sanctum', 'trial.active'])->group(function () {
     Route::get('/accounts/{account}', [AccountController::class, 'show']);
     Route::patch('/accounts/{account}', [AccountController::class, 'update']);
     Route::delete('/accounts/{account}', [AccountController::class, 'destroy']);
+
+    Route::get('/pipelines', [PipelineController::class, 'index']);
+
+    Route::get('/leads', [LeadController::class, 'index']);
+    Route::post('/leads', [LeadController::class, 'store']);
+    Route::get('/leads/{lead}', [LeadController::class, 'show']);
+    Route::patch('/leads/{lead}', [LeadController::class, 'update']);
+    Route::delete('/leads/{lead}', [LeadController::class, 'destroy']);
 });
 
 Route::get('/branding', function (Request $request) {

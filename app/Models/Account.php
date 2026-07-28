@@ -108,5 +108,35 @@ class Account extends Model
                 $builder->whereIn('id', $account->subtreeIds());
             }
         });
+
+        static::created(function (self $account) {
+            if ($account->account_type === self::TYPE_CLIENT) {
+                $account->createDefaultPipeline();
+            }
+        });
+    }
+
+    /**
+     * Every client account gets a default sales pipeline with a standard set
+     * of stages, matching the reference app's default board (see
+     * .claude/build-plan/01-feature-inventory.md).
+     */
+    public function createDefaultPipeline(): Pipeline
+    {
+        $pipeline = Pipeline::withoutGlobalScopes()->create([
+            'account_id' => $this->id,
+            'name' => 'Sales Pipeline',
+            'is_default' => true,
+        ]);
+
+        foreach (['New Lead', 'Contacted', 'Qualified', 'Won', 'Lost'] as $order => $name) {
+            PipelineStage::create([
+                'pipeline_id' => $pipeline->id,
+                'name' => $name,
+                'order' => $order,
+            ]);
+        }
+
+        return $pipeline;
     }
 }
