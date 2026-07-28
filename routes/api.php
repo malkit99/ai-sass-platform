@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AccountController;
+use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\PipelineController;
 use Illuminate\Http\Request;
@@ -50,6 +51,8 @@ Route::middleware(['auth:sanctum', 'trial.active'])->group(function () {
     Route::get('/leads/{lead}', [LeadController::class, 'show']);
     Route::patch('/leads/{lead}', [LeadController::class, 'update']);
     Route::delete('/leads/{lead}', [LeadController::class, 'destroy']);
+
+    Route::get('/activity-logs', [ActivityLogController::class, 'index']);
 });
 
 Route::get('/branding', function (Request $request) {

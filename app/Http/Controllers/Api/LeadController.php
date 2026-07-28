@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\Lead;
 use App\Models\Pipeline;
+use App\Rules\ValidMobileNumber;
 use Illuminate\Http\Request;
 
 class LeadController extends Controller
@@ -38,7 +40,7 @@ class LeadController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'phone' => ['nullable', new ValidMobileNumber],
             'email' => ['nullable', 'email', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
             'pipeline_id' => ['nullable', 'integer', 'exists:pipelines,id'],
@@ -62,6 +64,8 @@ class LeadController extends Controller
             'last_activity_at' => now(),
         ]);
 
+        ActivityLog::record($lead, 'created', "{$lead->name} was added as a new lead.");
+
         return response()->json($lead, 201);
     }
 
@@ -84,7 +88,7 @@ class LeadController extends Controller
 
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
-            'phone' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'phone' => ['sometimes', 'nullable', new ValidMobileNumber],
             'email' => ['sometimes', 'nullable', 'email', 'max:255'],
             'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'stage_id' => ['sometimes', 'integer', 'exists:pipeline_stages,id'],
@@ -94,6 +98,8 @@ class LeadController extends Controller
         $data['last_activity_at'] = now();
 
         $lead->update($data);
+
+        $this->logUpdate($lead);
 
         return $lead;
     }
@@ -105,8 +111,38 @@ class LeadController extends Controller
     {
         $this->authorize('delete', $lead);
 
+        // Logged before the delete — the log entry stores its own description
+        // string precisely so it survives after the lead row is gone.
+        ActivityLog::record($lead, 'deleted', "{$lead->name} was deleted.");
+
         $lead->delete();
 
         return response()->noContent();
+    }
+
+    /**
+     * Records one activity entry describing what actually changed — the
+     * stage move and the hot toggle are the interesting, frequent cases and
+     * get their own readable message; anything else falls back to a generic
+     * "details updated" entry.
+     */
+    private function logUpdate(Lead $lead): void
+    {
+        if ($lead->wasChanged('stage_id')) {
+            ActivityLog::record($lead, 'stage_changed', "{$lead->name} moved to {$lead->stage->name}.");
+
+            return;
+        }
+
+        if ($lead->wasChanged('is_hot')) {
+            $state = $lead->is_hot ? 'marked as hot' : 'unmarked as hot';
+            ActivityLog::record($lead, 'updated', "{$lead->name} was {$state}.");
+
+            return;
+        }
+
+        if ($lead->wasChanged()) {
+            ActivityLog::record($lead, 'updated', "{$lead->name}'s details were updated.");
+        }
     }
 }
