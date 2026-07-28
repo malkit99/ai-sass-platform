@@ -8,7 +8,7 @@ import { useLocaleStore } from '@/stores/locale/locale'
 import { modules } from '@core/utils/modules'
 import { availableLocales } from '@core/plugins/i18n'
 
-defineEmits(['toggle-nav', 'open-settings'])
+defineEmits(['toggle-nav', 'open-settings', 'open-activity'])
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -139,6 +139,7 @@ async function logout() {
         </v-list>
       </v-menu>
 
+      <v-btn icon="mdi-history" variant="text" class="mr-1" @click="$emit('open-activity')" />
       <v-btn icon="mdi-cog-outline" variant="text" class="mr-2" @click="$emit('open-settings')" />
 
       <v-menu>

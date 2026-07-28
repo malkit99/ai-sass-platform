@@ -52,3 +52,26 @@ html, body {
 .v-theme--dark .v-btn:hover {
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6);
 }
+
+/* SweetAlert2 popups follow the same rounded/flat convention as the app's
+   own dialogs (see @core/plugins/sweetalert.js). */
+.app-swal-popup {
+  border-radius: 12px !important;
+}
+
+.app-swal-btn {
+  border-radius: 8px !important;
+  text-transform: uppercase;
+  font-weight: 500;
+  padding: 0 20px !important;
+}
+
+.app-swal-btn--confirm {
+  background-color: rgb(var(--v-theme-primary)) !important;
+  color: rgb(var(--v-theme-on-primary)) !important;
+}
+
+.app-swal-btn--cancel {
+  color: rgb(var(--v-theme-primary)) !important;
+  border-color: rgba(var(--v-theme-primary), 0.5) !important;
+}

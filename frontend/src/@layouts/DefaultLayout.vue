@@ -6,6 +6,7 @@ import NavDrawer from './components/NavDrawer.vue'
 import AppBarNav from './components/AppBarNav.vue'
 import AppFooter from './components/AppFooter.vue'
 import ThemeSettingsDrawer from './components/ThemeSettingsDrawer.vue'
+import ActivityLogDrawer from './components/ActivityLogDrawer.vue'
 
 const { mobile } = useDisplay()
 
@@ -15,6 +16,7 @@ const { mobile } = useDisplay()
 const rail = ref(false)
 const drawerOpen = ref(!mobile.value)
 const settingsOpen = ref(false)
+const activityOpen = ref(false)
 const themeStore = useThemeStore()
 
 function toggleNav() {
@@ -28,7 +30,7 @@ function toggleNav() {
 
 <template>
   <NavDrawer v-model="drawerOpen" :rail="!mobile && rail" />
-  <AppBarNav @toggle-nav="toggleNav" @open-settings="settingsOpen = true" />
+  <AppBarNav @toggle-nav="toggleNav" @open-settings="settingsOpen = true" @open-activity="activityOpen = true" />
 
   <v-main>
     <div :class="{ 'content-boxed': themeStore.contentWidth === 'boxed' }">
@@ -38,6 +40,7 @@ function toggleNav() {
 
   <AppFooter />
   <ThemeSettingsDrawer v-model="settingsOpen" />
+  <ActivityLogDrawer v-model="activityOpen" />
 </template>
 
 <style scoped>

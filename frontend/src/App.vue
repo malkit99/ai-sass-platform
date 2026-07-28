@@ -6,6 +6,7 @@ import vuetify from '@core/plugins/vuetify'
 import { useThemeStore } from '@/stores/theme/theme'
 import { useBrandingStore } from '@/stores/branding/branding'
 import { useLocaleStore } from '@/stores/locale/locale'
+import AppSnackbar from '@/components/AppSnackbar.vue'
 
 const vuetifyTheme = useTheme()
 const themeStore = useThemeStore()
@@ -40,5 +41,6 @@ watchEffect(() => {
 <template>
   <v-app>
     <router-view />
+    <AppSnackbar />
   </v-app>
 </template>

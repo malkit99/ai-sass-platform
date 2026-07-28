@@ -13,7 +13,6 @@ const { t } = useI18n()
 
 const showNewLead = ref(false)
 const targetStageId = ref(null)
-const saving = ref(false)
 const search = ref('')
 const filter = ref('all') // all | hot | recent
 
@@ -85,16 +84,6 @@ function openNewLead(stageId = null) {
   targetStageId.value = stageId
   showNewLead.value = true
 }
-
-async function submitNewLead(values) {
-  saving.value = true
-  try {
-    await crm.createLead({ ...values, stage_id: targetStageId.value })
-    showNewLead.value = false
-  } finally {
-    saving.value = false
-  }
-}
 </script>
 
 <template>
@@ -123,6 +112,6 @@ async function submitNewLead(values) {
 
     <CrmKanbanBoard v-if="crm.pipeline" :pipeline="crm.pipeline" :columns="columns" @add-lead="openNewLead" />
 
-    <NewLeadDialog v-model="showNewLead" :saving="saving" @submit="submitNewLead" />
+    <NewLeadDialog v-model="showNewLead" :stage-id="targetStageId" />
   </v-container>
 </template>

@@ -2,6 +2,7 @@
 import draggable from 'vuedraggable'
 import { useI18n } from 'vue-i18n'
 import { useCrmStore } from '@/stores/crm/crm'
+import { useAlertStore } from '@/stores/alert/alert'
 import AppButton from '@/components/AppButton.vue'
 import LeadCard from './LeadCard.vue'
 
@@ -13,7 +14,27 @@ const props = defineProps({
 defineEmits(['add-lead'])
 
 const crm = useCrmStore()
+const alertStore = useAlertStore()
 const { t } = useI18n()
+
+async function onDeleteLead(lead) {
+  try {
+    await crm.deleteLead(lead.id)
+    alertStore.success(`${lead.name} was deleted.`)
+  } catch (e) {
+    alertStore.error(e.response?.data?.message ?? 'Could not delete this lead. Please try again.')
+  }
+}
+
+async function onMoveLead(lead, stageId) {
+  const targetStage = props.pipeline.stages.find((s) => s.id === stageId)
+  try {
+    await crm.moveLead(lead.id, stageId)
+    alertStore.success(`${lead.name} moved to ${targetStage?.name ?? 'new stage'}.`)
+  } catch (e) {
+    alertStore.error(e.response?.data?.message ?? 'Could not move this lead. Please try again.')
+  }
+}
 
 const stageColors = {
   'New Lead': 'blue',
@@ -41,7 +62,7 @@ function prevStage(stage) {
 
 function onDragChange(event, stage) {
   if (event.added) {
-    crm.moveLead(event.added.element.id, stage.id)
+    onMoveLead(event.added.element, stage.id)
   }
 }
 </script>
@@ -80,9 +101,9 @@ function onDragChange(event, stage) {
                 :prev-stage="prevStage(stage)"
                 :next-stage="nextStage(stage)"
                 @hot="crm.toggleHot(lead)"
-                @prev="(stageId) => crm.moveLead(lead.id, stageId)"
-                @next="(stageId) => crm.moveLead(lead.id, stageId)"
-                @delete="crm.deleteLead(lead.id)"
+                @prev="(stageId) => onMoveLead(lead, stageId)"
+                @next="(stageId) => onMoveLead(lead, stageId)"
+                @delete="onDeleteLead(lead)"
               />
             </template>
           </draggable>
