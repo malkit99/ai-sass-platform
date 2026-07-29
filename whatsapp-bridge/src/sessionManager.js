@@ -32,14 +32,32 @@ function toJid(phone) {
   return `${phone}@s.whatsapp.net`;
 }
 
+// The authenticated socket's own jid ("919628061241:14@s.whatsapp.net") and a
+// resolved LID->phone-number JID ("919876543210:0@...") are both
+// device-suffixed — strip both the domain and any ":deviceId", a real phone
+// number never legitimately contains one.
 function phoneFromJid(jid) {
-  return jid?.split('@')[0];
+  return jid?.split('@')[0]?.split(':')[0];
 }
 
-// The authenticated socket's own jid looks like "919628061241:14@s.whatsapp.net"
-// (device-suffixed) — strip both the domain and the ":deviceId" part.
-function ownPhoneFromJid(jid) {
-  return jid?.split('@')[0]?.split(':')[0];
+// WhatsApp's newer privacy protocol sometimes delivers an inbound message's
+// remoteJid as a @lid (Linked ID) — an opaque identifier, not the sender's
+// real phone number — instead of the usual @s.whatsapp.net JID. Naively
+// stripping the domain off a @lid JID stores that opaque ID as if it were a
+// phone number, so replies (autoresponder, chatbot) get sent to a JID that
+// doesn't correspond to any reachable account: silently accepted by
+// WhatsApp's servers, never delivered. Resolve it back to the real
+// phone-number JID via the fork's Signal-layer LID mapping store first.
+async function resolveToPhoneJid(sock, jid) {
+  if (!jid?.endsWith('@lid')) {
+    return jid;
+  }
+
+  try {
+    return (await sock.signalRepository.lidMapping.getPNForLID(jid)) || jid;
+  } catch {
+    return jid;
+  }
 }
 
 /**
@@ -116,7 +134,7 @@ export async function createInstance(channelId) {
       await sendWebhook('connection.update', {
         channel_id: channelId,
         status: 'connected',
-        profile_phone: ownPhoneFromJid(sock.user?.id),
+        profile_phone: phoneFromJid(sock.user?.id),
       });
     } else if (connection === 'close') {
       const statusCode = lastDisconnect?.error instanceof Boom
@@ -145,9 +163,11 @@ export async function createInstance(channelId) {
     for (const msg of messages) {
       if (msg.key.fromMe || !msg.message) continue;
 
+      const remoteJid = await resolveToPhoneJid(sock, msg.key.remoteJid);
+
       await sendWebhook('message.inbound', {
         channel_id: channelId,
-        phone: phoneFromJid(msg.key.remoteJid),
+        phone: phoneFromJid(remoteJid),
         name: msg.pushName || null,
         type: 'text',
         body: extractText(msg.message),

@@ -5,23 +5,31 @@ import { useAlertStore } from '@/stores/alert/alert'
 import { fireConfirm } from '@core/plugins/sweetalert'
 import AppButton from '@/components/AppButton.vue'
 import AutoresponderList from './AutoresponderList.vue'
-import AutoresponderDialog from './AutoresponderDialog.vue'
+import AutoresponderFormPanel from './AutoresponderFormPanel.vue'
 
 const whatsapp = useWhatsappStore()
 const alertStore = useAlertStore()
-const showDialog = ref(false)
+const view = ref('list') // 'list' | 'form'
 const editing = ref(null)
 
-onMounted(() => whatsapp.fetchAutoresponders())
+onMounted(() => {
+  whatsapp.fetchAutoresponders()
+  if (!whatsapp.contactGroups.length) whatsapp.fetchContactGroups()
+})
 
 function create() {
   editing.value = null
-  showDialog.value = true
+  view.value = 'form'
 }
 
 function edit(autoresponder) {
   editing.value = autoresponder
-  showDialog.value = true
+  view.value = 'form'
+}
+
+function onSaved() {
+  view.value = 'list'
+  editing.value = null
 }
 
 async function remove(autoresponder) {
@@ -35,16 +43,21 @@ async function remove(autoresponder) {
 
 <template>
   <div>
-    <div class="d-flex flex-wrap align-center ga-3 mb-4">
-      <div class="flex-grow-1">
-        <h2 class="text-h5">Autoresponder</h2>
-        <div class="text-caption text-medium-emphasis">Send a pre-written reply to any inbound message</div>
+    <template v-if="view === 'list'">
+      <div class="d-flex flex-wrap align-center ga-3 mb-4">
+        <div class="flex-grow-1">
+          <h2 class="text-h5">Autoresponder</h2>
+          <div class="text-caption text-medium-emphasis">Send a pre-written reply to any inbound message</div>
+        </div>
+        <AppButton prepend-icon="mdi-plus" @click="create">New Autoresponder</AppButton>
       </div>
-      <AppButton prepend-icon="mdi-plus" @click="create">New Autoresponder</AppButton>
-    </div>
 
-    <AutoresponderList :autoresponders="whatsapp.autoresponders" :channels="whatsapp.channels" @edit="edit" @delete="remove" />
+      <AutoresponderList :autoresponders="whatsapp.autoresponders" :channels="whatsapp.channels" @edit="edit" @delete="remove" />
+    </template>
 
-    <AutoresponderDialog v-model="showDialog" :channels="whatsapp.channels" :editing="editing" />
+    <AutoresponderFormPanel
+      v-else :channels="whatsapp.channels" :contact-groups="whatsapp.contactGroups" :editing="editing"
+      @back="view = 'list'" @saved="onSaved"
+    />
   </div>
 </template>

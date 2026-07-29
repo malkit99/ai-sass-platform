@@ -3,16 +3,12 @@
 namespace App\Http\Controllers\Api\Whatsapp;
 
 use App\Http\Controllers\Controller;
-use App\Models\Account;
+use App\Jobs\Whatsapp\SendAutoReplyJob;
 use App\Models\Channel;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\WhatsappAutoresponder;
 use App\Models\WhatsappChatbotRule;
-use App\Models\WhatsappCreditBalance;
-use App\Models\WhatsappCreditLedger;
-use App\Services\Whatsapp\BridgeClient;
-use App\Services\Whatsapp\Spintax;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
@@ -25,8 +21,6 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class WebhookController extends Controller
 {
-    public function __construct(private readonly BridgeClient $bridge) {}
-
     public function __invoke(Request $request)
     {
         if (! $this->verifySignature($request)) {
@@ -119,53 +113,42 @@ class WebhookController extends Controller
             ->first(fn (WhatsappChatbotRule $rule) => $rule->matches($inboundBody));
 
         if ($rule) {
-            $this->sendAutoReply($channel, $conversation, $rule->message_type, $rule->body, $rule->media_url);
+            SendAutoReplyJob::dispatch($channel->id, $conversation->id, $rule->message_type, $rule->body, $rule->media_url, null);
 
             return;
         }
 
+        // Channel-specific rules before account-wide ones; appliesTo() covers
+        // except-contacts and the all/individual/group target scope (screenshot
+        // 77's "Sent to").
         $autoresponder = WhatsappAutoresponder::withoutGlobalScopes()
             ->where('account_id', $channel->account_id)
             ->where(fn ($q) => $q->where('channel_id', $channel->id)->orWhereNull('channel_id'))
             ->where('enabled', true)
             ->orderByRaw('channel_id IS NULL')
-            ->first();
+            ->get()
+            ->first(fn (WhatsappAutoresponder $rule) => $rule->appliesTo($conversation->contact_phone));
 
-        if ($autoresponder) {
-            $this->sendAutoReply($channel, $conversation, $autoresponder->message_type, $autoresponder->body, $autoresponder->media_url);
-        }
-    }
-
-    private function sendAutoReply(Channel $channel, Conversation $conversation, string $type, ?string $body, ?string $mediaUrl): void
-    {
-        $account = Account::withoutGlobalScopes()->find($channel->account_id);
-        $balance = WhatsappCreditBalance::forAccount($account);
-
-        if ($balance->credits_remaining < 1) {
-            Log::info('Skipped WhatsApp auto-reply — no credits remaining', ['channel_id' => $channel->id]);
-
+        if (! $autoresponder) {
             return;
         }
 
-        $body = Spintax::render($body);
+        // "Resubmit message only after (minute)" (screenshot 78) — a cooldown
+        // per conversation, not per rule, since re-triggering seconds after
+        // the last auto-reply is exactly the spammy behavior this exists to
+        // prevent regardless of which rule fired last time.
+        $lastAutoReply = $conversation->messages()
+            ->where('sent_by', 'auto_reply')
+            ->latest('created_at')
+            ->first();
 
-        try {
-            $this->bridge->sendMessage($channel->id, $conversation->contact_phone, $type, $body, $mediaUrl);
-
-            $conversation->messages()->create([
-                'direction' => Message::DIRECTION_OUT,
-                'type' => $type,
-                'body' => $body,
-                'media_url' => $mediaUrl,
-                'status' => 'sent',
-                'sent_by' => 'auto_reply',
-            ]);
-
-            $conversation->update(['last_message_at' => now()]);
-
-            WhatsappCreditLedger::record($account, -1, WhatsappCreditLedger::REASON_MESSAGE_SENT);
-        } catch (\Throwable $e) {
-            Log::warning('WhatsApp auto-reply failed to send', ['channel_id' => $channel->id, 'error' => $e->getMessage()]);
+        if ($lastAutoReply && $lastAutoReply->created_at->diffInMinutes(now()) < $autoresponder->resubmit_after_minutes) {
+            return;
         }
+
+        SendAutoReplyJob::dispatch(
+            $channel->id, $conversation->id, $autoresponder->message_type, $autoresponder->body,
+            $autoresponder->media_url, $autoresponder->interactive_config,
+        );
     }
 }
