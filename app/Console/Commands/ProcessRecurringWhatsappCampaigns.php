@@ -54,7 +54,9 @@ class ProcessRecurringWhatsappCampaigns extends Command
                 'body' => $original->body,
                 'media_url' => $original->media_url,
                 'media_type' => $original->media_type,
+                'interactive_config' => $original->interactive_config,
                 'spintax_enabled' => $original->spintax_enabled,
+                'emoji_randomizer' => $original->emoji_randomizer,
                 'warm_up_mode' => $original->warm_up_mode,
                 'min_interval_seconds' => $original->min_interval_seconds,
                 'max_interval_seconds' => $original->max_interval_seconds,
@@ -63,7 +65,7 @@ class ProcessRecurringWhatsappCampaigns extends Command
             ]);
 
             $dispatcher->dispatchRecipients(
-                $child, $phones, $original->min_interval_seconds, $original->max_interval_seconds,
+                $child, $channel, $phones, $original->min_interval_seconds, $original->max_interval_seconds,
                 $original->allowed_hours, now(),
             );
 

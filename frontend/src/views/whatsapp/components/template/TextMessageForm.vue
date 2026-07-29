@@ -18,24 +18,22 @@ const saving = ref(false)
 const schema = toTypedSchema(
   yup.object({
     name: yup.string().required('Template name is required'),
-    body: yup.string().required('Message is required'),
-    footer: yup.string().nullable().max(60, 'Footer must be 60 characters or fewer'),
+    body: yup.string().required('Message is required').max(4096, 'Message must be 4096 characters or fewer'),
   }),
 )
 
 const { defineField, handleSubmit, errors } = useForm({
   validationSchema: schema,
-  initialValues: { name: props.editing?.name ?? '', body: props.editing?.body ?? '', footer: props.editing?.footer ?? '' },
+  initialValues: { name: props.editing?.name ?? '', body: props.editing?.body ?? '' },
 })
 
 const [name, nameAttrs] = defineField('name')
 const [body, bodyAttrs] = defineField('body')
-const [footer, footerAttrs] = defineField('footer')
 
 // Kept as a script-side constant — Vue's template compiler chokes trying to
 // parse a literal "{{name}}" written directly inside a mustache interpolation
 // (nested same-char delimiters), so this stays a single simple interpolation.
-const variableHint = 'Use {{name}}, {{phone}} for variables.'
+const variableHint = 'Use {{name}}, {{phone}}, or {{param1}}–{{param20}} (contact import columns) for variables.'
 
 const submit = handleSubmit(async (values) => {
   saving.value = true
@@ -70,7 +68,7 @@ const submit = handleSubmit(async (values) => {
     <v-card class="pa-4">
       <div class="text-caption text-medium-emphasis mb-1">MESSAGE CONTENT</div>
       <v-textarea
-        v-model="body" v-bind="bodyAttrs" placeholder="Hi {{name}}, ..." variant="outlined" rows="8" auto-grow
+        v-model="body" v-bind="bodyAttrs" placeholder="Hi {{name}}, ..." variant="outlined" rows="8" auto-grow maxlength="4096" counter
         :error-messages="errors.body"
       />
       <div class="d-flex align-center ga-1 text-caption text-medium-emphasis mt-1">
@@ -79,16 +77,8 @@ const submit = handleSubmit(async (values) => {
       </div>
     </v-card>
 
-    <v-card class="pa-4 mt-4">
-      <div class="text-caption text-medium-emphasis mb-1">FOOTER (OPTIONAL)</div>
-      <v-text-field
-        v-model="footer" v-bind="footerAttrs" placeholder="e.g. Reply STOP to unsubscribe"
-        variant="outlined" density="comfortable" maxlength="60" counter :error-messages="errors.footer"
-      />
-    </v-card>
-
     <template #preview>
-      <TemplatePhonePreview :body-text="body" :footer-text="footer" />
+      <TemplatePhonePreview :body-text="body" />
     </template>
   </TemplateFormShell>
 </template>

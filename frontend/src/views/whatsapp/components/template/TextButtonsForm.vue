@@ -19,7 +19,7 @@ const buttons = ref(props.editing?.config?.buttons ?? [])
 const schema = toTypedSchema(
   yup.object({
     name: yup.string().required('Template name is required'),
-    body: yup.string().required('Message is required'),
+    body: yup.string().required('Message is required').max(1024, 'Message must be 1024 characters or fewer'),
     footer: yup.string().nullable().max(60, 'Footer must be 60 characters or fewer'),
   }),
 )
@@ -33,11 +33,19 @@ const [name, nameAttrs] = defineField('name')
 const [body, bodyAttrs] = defineField('body')
 const [footer, footerAttrs] = defineField('footer')
 
-const variableHint = 'Use {{name}}, {{phone}} for variables.'
+const variableHint = 'Use {{name}}, {{phone}}, or {{param1}}–{{param20}} (contact import columns) for variables.'
 
 const submit = handleSubmit(async (values) => {
   if (!buttons.value.length) {
     alertStore.warning('Add at least one button.')
+    return
+  }
+  if (buttons.value.length > 3) {
+    alertStore.warning('WhatsApp allows up to 3 buttons per message.')
+    return
+  }
+  if (buttons.value.some((b) => b.length > 20)) {
+    alertStore.warning('Button labels must be 20 characters or fewer.')
     return
   }
 
@@ -74,7 +82,7 @@ const submit = handleSubmit(async (values) => {
       <div class="text-overline text-medium-emphasis mb-3">CONFIGURATION</div>
       <v-combobox
         v-model="buttons" label="Buttons" multiple chips closable-chips variant="outlined"
-        hint="Press enter after each button label (e.g. Yes, No, Call me)" persistent-hint
+        hint="Press enter after each button label — up to 3 buttons, 20 characters each" persistent-hint
       />
     </v-card>
 
@@ -82,7 +90,7 @@ const submit = handleSubmit(async (values) => {
       <div class="text-caption text-medium-emphasis mb-1">MESSAGE CONTENT</div>
       <v-textarea
         v-model="body" v-bind="bodyAttrs" placeholder="Hi {{name}}, ..." variant="outlined" rows="6" auto-grow
-        :error-messages="errors.body"
+        maxlength="1024" counter :error-messages="errors.body"
       />
       <div class="d-flex align-center ga-1 text-caption text-medium-emphasis mt-1">
         <v-icon icon="mdi-information-outline" size="14" />

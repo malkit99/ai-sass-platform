@@ -27,7 +27,7 @@ const sections = ref(
 const schema = toTypedSchema(
   yup.object({
     name: yup.string().required('Template name is required'),
-    body: yup.string().required('Message is required'),
+    body: yup.string().required('Message is required').max(1024, 'Message must be 1024 characters or fewer'),
     footer: yup.string().nullable().max(60, 'Footer must be 60 characters or fewer'),
     button_text: yup.string().required('Button text is required').max(20, 'Button text must be 20 characters or fewer'),
   }),
@@ -48,7 +48,7 @@ const [body, bodyAttrs] = defineField('body')
 const [footer, footerAttrs] = defineField('footer')
 const [buttonText, buttonTextAttrs] = defineField('button_text')
 
-const variableHint = 'Use {{name}}, {{phone}} for variables.'
+const variableHint = 'Use {{name}}, {{phone}}, or {{param1}}–{{param20}} (contact import columns) for variables.'
 
 function addSection() {
   sections.value.push({ title: `Section ${sections.value.length + 1}`, rows: [{ title: '', description: '', id: '' }] })
@@ -73,6 +73,18 @@ const submit = handleSubmit(async (values) => {
 
   if (!cleanSections.length) {
     alertStore.warning('Add at least one section with at least one row.')
+    return
+  }
+  if (cleanSections.length > 10) {
+    alertStore.warning('WhatsApp allows up to 10 sections per list message.')
+    return
+  }
+  if (cleanSections.reduce((sum, s) => sum + s.rows.length, 0) > 10) {
+    alertStore.warning('WhatsApp allows up to 10 rows in total across all sections.')
+    return
+  }
+  if (cleanSections.some((s) => s.title.length > 24 || s.rows.some((r) => r.title.length > 24 || (r.description ?? '').length > 72))) {
+    alertStore.warning('Section/row titles must be 24 characters or fewer, row descriptions 72 or fewer.')
     return
   }
 
@@ -109,7 +121,7 @@ const submit = handleSubmit(async (values) => {
     <v-card class="pa-4 mb-4">
       <div class="text-caption text-medium-emphasis mb-1">MESSAGE CONTENT</div>
       <v-textarea
-        v-model="body" v-bind="bodyAttrs" placeholder="Hi {{name}}, ..." variant="outlined" rows="4" auto-grow
+        v-model="body" v-bind="bodyAttrs" placeholder="Hi {{name}}, ..." variant="outlined" rows="4" auto-grow maxlength="1024" counter
         :error-messages="errors.body"
       />
       <div class="d-flex align-center ga-1 text-caption text-medium-emphasis mt-1">
@@ -135,15 +147,15 @@ const submit = handleSubmit(async (values) => {
     <v-card v-for="(section, sIndex) in sections" :key="sIndex" class="pa-4 mb-4" variant="outlined">
       <div class="d-flex align-center justify-space-between mb-3">
         <v-text-field
-          v-model="section.title" placeholder="Section" density="compact" variant="outlined" hide-details
-          style="max-width: 220px"
+          v-model="section.title" placeholder="Section (max 24)" density="compact" variant="outlined" hide-details
+          maxlength="24" style="max-width: 220px"
         />
         <v-btn size="small" variant="tonal" color="error" @click="removeSection(sIndex)">Remove</v-btn>
       </div>
 
       <div v-for="(row, rIndex) in section.rows" :key="rIndex" class="d-flex align-start ga-2 mb-2">
-        <v-text-field v-model="row.title" placeholder="Title" density="compact" variant="outlined" hide-details />
-        <v-text-field v-model="row.description" placeholder="Desc" density="compact" variant="outlined" hide-details />
+        <v-text-field v-model="row.title" placeholder="Title (max 24)" density="compact" variant="outlined" hide-details maxlength="24" />
+        <v-text-field v-model="row.description" placeholder="Desc (max 72)" density="compact" variant="outlined" hide-details maxlength="72" />
         <v-text-field v-model="row.id" placeholder="ID" density="compact" variant="outlined" hide-details style="max-width: 100px" />
         <v-btn icon="mdi-close-circle" size="small" variant="text" color="error" @click="removeRow(section, rIndex)" />
       </div>

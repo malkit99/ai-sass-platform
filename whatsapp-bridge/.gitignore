@@ -1,5 +1,6 @@
 node_modules/
 sessions/*
 !sessions/.gitkeep
+cache/
 .env
 *.log

@@ -43,10 +43,10 @@ app.get('/instances/:channelId/status', (req, res) => {
 });
 
 app.post('/instances/:channelId/send', async (req, res) => {
-  const { phone, type, body, media_url, media_type } = req.body;
+  const { phone, type, body, media_url, media_type, interactive } = req.body;
 
   try {
-    const result = await sessions.sendMessage(req.params.channelId, phone, type, body, media_url, media_type);
+    const result = await sessions.sendMessage(req.params.channelId, phone, type, body, media_url, media_type, interactive);
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });

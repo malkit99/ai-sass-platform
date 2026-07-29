@@ -35,8 +35,8 @@ function update(field, val) {
       @update:model-value="update('type', $event)"
     />
     <v-text-field
-      :model-value="modelValue.label" placeholder="Label" density="compact" variant="outlined" hide-details
-      @update:model-value="update('label', $event)"
+      :model-value="modelValue.label" placeholder="Label (max 20)" density="compact" variant="outlined" hide-details
+      maxlength="20" @update:model-value="update('label', $event)"
     />
     <v-text-field
       :model-value="modelValue.value" :placeholder="valuePlaceholder" density="compact" variant="outlined" hide-details

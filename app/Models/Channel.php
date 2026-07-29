@@ -28,6 +28,7 @@ class Channel extends Model
         'credentials',
         'status',
         'connected_at',
+        'warmup_started_at',
     ];
 
     protected function casts(): array
@@ -35,6 +36,7 @@ class Channel extends Model
         return [
             'credentials' => 'encrypted:array',
             'connected_at' => 'datetime',
+            'warmup_started_at' => 'datetime',
         ];
     }
 

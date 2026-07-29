@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useForm } from 'vee-validate'
 import { toTypedSchema } from '@vee-validate/yup'
 import * as yup from 'yup'
-import { parsePhoneNumberFromString } from 'libphonenumber-js'
 import { useWhatsappStore } from '@/stores/whatsapp/whatsapp'
 import { useAlertStore } from '@/stores/alert/alert'
 import { fireSuccess } from '@core/plugins/sweetalert'
@@ -15,24 +14,29 @@ const props = defineProps({
   channels: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['back', 'created'])
+const emit = defineEmits(['back', 'created', 'connect-channel'])
 
-// Types the bridge can actually send today (plain body/media_url) — matches
-// WhatsappTemplate::SENDABLE_TYPES. Picking any other template type below is
-// still allowed (so the filter/radio UI is fully browsable) but is rejected
-// with a clear message on submit instead of silently doing nothing.
-const SENDABLE_TYPES = ['text', 'text_image', 'text_video', 'text_document', 'text_audio']
+// Types the bridge can actually send today — matches WhatsappTemplate::ALL_SENDABLE_TYPES.
+// Picking any other template type below is still allowed (so the filter/radio
+// UI is fully browsable) but is rejected with a clear message on submit
+// instead of silently doing nothing — currently just carousel, which needs a
+// protocol this bridge doesn't support at all.
+const SENDABLE_TYPES = [
+  'text', 'text_image', 'text_video', 'text_document', 'text_audio',
+  'text_buttons', 'text_lists', 'text_poll', 'interactive_buttons',
+]
 const INTERVAL_OPTIONS = Array.from({ length: 3600 }, (_, i) => i + 1)
 
 const whatsapp = useWhatsappStore()
 const alertStore = useAlertStore()
 const saving = ref(false)
-const recipientsRaw = ref('')
-const recipientSource = ref('group') // 'group' | 'manual'
+const checkingStatus = ref(true)
 const contactGroupId = ref(null)
 const showMediaPicker = ref(false)
 
-const messageTab = ref('text_media') // 'text_media' | 'buttons' | 'list' | 'poll' | 'template'
+const statusColor = { connected: 'success', connecting: 'warning', disconnected: 'default' }
+
+const messageTab = ref('text') // 'text' | 'media' | 'text_template' | 'buttons' | 'list' | 'poll' | 'template'
 const selectedTemplateId = ref(null)
 
 const scheduledAt = ref('') // datetime-local string, empty = run now
@@ -50,9 +54,29 @@ function applyHourPreset(preset) {
   allowedHours.value = { daytime: DAYTIME_HOURS, nighttime: NIGHTTIME_HOURS, odd: ODD_HOURS, even: EVEN_HOURS }[preset]
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (!whatsapp.contactGroups.length) whatsapp.fetchContactGroups()
   if (!whatsapp.templates.length) whatsapp.fetchTemplates()
+
+  // The store's cached status can be stale (e.g. after a bridge restart that
+  // never fired a disconnect webhook) — refresh each channel's live status
+  // before trusting the list, same as SendMessagePanel.
+  checkingStatus.value = true
+  try {
+    await Promise.all(
+      props.channels.map(async (c) => {
+        try {
+          const status = await whatsapp.fetchStatus(c.id)
+          whatsapp.updateChannelStatus(c.id, status)
+        } catch {
+          // Bridge unreachable — leave the cached status as-is rather than
+          // failing the whole page over one instance.
+        }
+      }),
+    )
+  } finally {
+    checkingStatus.value = false
+  }
 })
 
 watch(messageTab, () => { selectedTemplateId.value = null })
@@ -60,6 +84,7 @@ watch(messageTab, () => { selectedTemplateId.value = null })
 const selectedGroup = computed(() => whatsapp.contactGroups.find((g) => g.id === contactGroupId.value) ?? null)
 
 const filteredTemplates = computed(() => {
+  if (messageTab.value === 'text_template') return whatsapp.templates.filter((t) => t.type === 'text')
   if (messageTab.value === 'buttons') return whatsapp.templates.filter((t) => ['text_buttons', 'interactive_buttons'].includes(t.type))
   if (messageTab.value === 'list') return whatsapp.templates.filter((t) => t.type === 'text_lists')
   if (messageTab.value === 'poll') return whatsapp.templates.filter((t) => t.type === 'text_poll')
@@ -71,25 +96,28 @@ const filteredTemplates = computed(() => {
 const selectedTemplate = computed(() => filteredTemplates.value.find((t) => t.id === selectedTemplateId.value) ?? null)
 const selectedTemplateUnsendable = computed(() => selectedTemplate.value && !SENDABLE_TYPES.includes(selectedTemplate.value.type))
 
-function parseRecipients(raw) {
-  return [...new Set(raw.split(/[\n,]+/).map((s) => s.replace(/\D/g, '')).filter(Boolean))]
-}
+// Buttons/list are sent via WhatsApp's native interactive-message protocol
+// (the same one that renders quick-reply/list bubbles in the app itself) —
+// switched to this after the older Business-template format silently failed
+// (WhatsApp accepted it server-side, campaign showed "sent", nothing arrived
+// on the recipient's phone). Should now deliver, but flagging it in the UI
+// until confirmed on more than one test send.
+const RECENTLY_FIXED_TYPES = ['text_buttons', 'interactive_buttons', 'text_lists']
+const selectedTemplateBestEffort = computed(() => selectedTemplate.value && RECENTLY_FIXED_TYPES.includes(selectedTemplate.value.type))
 
 const schema = toTypedSchema(
   yup.object({
     channel_id: yup.number().required('Select a WhatsApp account'),
     name: yup.string().required('Campaign name is required'),
     // Requiredness for body/media_url depends on which MESSAGE TYPE tab is
-    // active (text_media vs. buttons/list/poll/template), which isn't
-    // something yup's schema can see — validated manually in submit()
-    // instead, so a hidden field's stale value can't silently block
-    // submission with no visible error (as it did when this schema tried to
-    // enforce it via message_type alone).
-    message_type: yup.string().oneOf(['text', 'media']).required(),
+    // active, which isn't something yup's schema can see — validated manually
+    // in submit() instead, so a hidden field's stale value can't silently
+    // block submission with no visible error.
     body: yup.string().nullable(),
     media_url: yup.string().nullable().url('Enter a valid URL'),
     spintax_enabled: yup.boolean(),
     warm_up_mode: yup.boolean(),
+    emoji_randomizer: yup.boolean(),
     min_interval_seconds: yup.number().min(1).max(3600).required(),
     max_interval_seconds: yup.number().min(yup.ref('min_interval_seconds'), 'Must be ≥ min interval').max(3600).required(),
   }),
@@ -98,34 +126,44 @@ const schema = toTypedSchema(
 const { defineField, handleSubmit, errors, setErrors } = useForm({
   validationSchema: schema,
   initialValues: {
-    channel_id: props.channels[0]?.id ?? null, name: '', message_type: 'text', body: '', media_url: '',
-    spintax_enabled: false, warm_up_mode: false, min_interval_seconds: 5, max_interval_seconds: 15,
+    channel_id: props.channels[0]?.id ?? null, name: '', body: '', media_url: '',
+    spintax_enabled: false, warm_up_mode: false, emoji_randomizer: false, min_interval_seconds: 5, max_interval_seconds: 15,
   },
 })
 
 const [channelId, channelIdAttrs] = defineField('channel_id')
 const [name, nameAttrs] = defineField('name')
-const [type, typeAttrs] = defineField('message_type')
 const [body, bodyAttrs] = defineField('body')
 const [mediaUrl, mediaUrlAttrs] = defineField('media_url')
 const [spintaxEnabled] = defineField('spintax_enabled')
 const [warmUpMode] = defineField('warm_up_mode')
+const [emojiRandomizer] = defineField('emoji_randomizer')
 const [minInterval, minIntervalAttrs] = defineField('min_interval_seconds')
 const [maxInterval, maxIntervalAttrs] = defineField('max_interval_seconds')
 
+const selectedChannel = computed(() => props.channels.find((c) => c.id === channelId.value) ?? null)
+const selectedChannelDisconnected = computed(() => selectedChannel.value && selectedChannel.value.status !== 'connected')
+
 const submit = handleSubmit(async (values) => {
+  if (selectedChannelDisconnected.value) {
+    alertStore.warning('This WhatsApp account is disconnected. Reconnect it first.')
+    return
+  }
+
   let payload = { ...values }
   let recipientCount = 0
 
-  if (messageTab.value === 'text_media') {
-    if (type.value === 'text' && !body.value) {
+  if (messageTab.value === 'text' || messageTab.value === 'media') {
+    if (messageTab.value === 'text' && !body.value) {
       setErrors({ body: 'Message is required' })
       return
     }
-    if (type.value === 'media' && !mediaUrl.value) {
+    if (messageTab.value === 'media' && !mediaUrl.value) {
       setErrors({ media_url: 'Media URL is required' })
       return
     }
+
+    payload.message_type = messageTab.value
   } else {
     if (!selectedTemplateId.value) {
       alertStore.warning('Select a template.')
@@ -143,31 +181,16 @@ const submit = handleSubmit(async (values) => {
   if (allowedHours.value.length) payload.allowed_hours = allowedHours.value
   if (recurringEnabled.value) payload.recurring_frequency = recurringFrequency.value
 
-  if (recipientSource.value === 'group') {
-    if (!contactGroupId.value) {
-      alertStore.warning('Select a contact group.')
-      return
-    }
-
-    payload = { ...payload, contact_group_id: contactGroupId.value }
-    recipientCount = selectedGroup.value?.contacts_count ?? 0
-  } else {
-    const recipients = parseRecipients(recipientsRaw.value)
-
-    if (!recipients.length) {
-      alertStore.warning('Add at least one recipient phone number.')
-      return
-    }
-
-    const invalid = recipients.filter((p) => !(parsePhoneNumberFromString(`+${p}`)?.isValid() ?? false))
-    if (invalid.length) {
-      alertStore.warning(`${invalid.length} recipient number(s) look invalid: ${invalid.slice(0, 3).join(', ')}${invalid.length > 3 ? '…' : ''}`)
-      return
-    }
-
-    payload = { ...payload, recipients }
-    recipientCount = recipients.length
+  // Contact group is the only recipient source — {{name}}/{{phone}}/custom
+  // variables resolve per-recipient from the contact table, which a manually
+  // typed phone list has no rows in.
+  if (!contactGroupId.value) {
+    alertStore.warning('Select a contact group.')
+    return
   }
+
+  payload = { ...payload, contact_group_id: contactGroupId.value }
+  recipientCount = selectedGroup.value?.contacts_count ?? 0
 
   saving.value = true
   try {
@@ -199,16 +222,33 @@ const submit = handleSubmit(async (values) => {
 
     <v-card class="pa-6">
       <v-form @submit.prevent="submit">
-        <div class="text-caption text-medium-emphasis mb-1">SELECT WHATSAPP ACCOUNT</div>
+        <div class="d-flex align-center ga-1 text-caption text-medium-emphasis mb-1">
+          SELECT WHATSAPP ACCOUNT
+          <v-progress-circular v-if="checkingStatus" size="12" width="2" indeterminate class="ml-1" />
+        </div>
         <v-select
           v-model="channelId" v-bind="channelIdAttrs" :items="channels" placeholder="Select an instance"
-          item-title="display_name" item-value="id" variant="outlined" density="comfortable" :error-messages="errors.channel_id" class="mb-4"
+          item-title="display_name" item-value="id" variant="outlined" density="comfortable" :error-messages="errors.channel_id" class="mb-2"
         >
           <template #item="{ props: itemProps, item }">
-            <v-list-item v-bind="itemProps" :title="item.raw.display_name" />
+            <v-list-item v-bind="itemProps">
+              <template #title>{{ item.raw.display_name }}</template>
+              <template #append>
+                <v-chip :color="statusColor[item.raw.status] ?? 'default'" size="x-small" variant="flat">{{ item.raw.status }}</v-chip>
+              </template>
+            </v-list-item>
           </template>
           <template #selection="{ item }">{{ item.raw.display_name }}</template>
         </v-select>
+
+        <v-alert v-if="selectedChannelDisconnected" type="warning" variant="tonal" density="compact" class="mb-4">
+          <div class="d-flex align-center justify-space-between ga-2">
+            <span class="text-body-2">This account is disconnected — you can't run a campaign from it right now.</span>
+            <AppButton size="small" variant="flat" color="warning" @click="$emit('connect-channel', selectedChannel)">
+              Connect now
+            </AppButton>
+          </div>
+        </v-alert>
 
         <div class="text-caption text-medium-emphasis mb-1">CAMPAIGN NAME</div>
         <v-text-field
@@ -216,71 +256,55 @@ const submit = handleSubmit(async (values) => {
           :error-messages="errors.name" class="mb-4"
         />
 
-        <div class="text-caption text-medium-emphasis mb-1">RECIPIENTS</div>
-        <v-btn-toggle v-model="recipientSource" mandatory density="comfortable" class="mb-3 message-type-toggle" divided>
-          <v-btn value="group" prepend-icon="mdi-account-box-outline">Contact Group</v-btn>
-          <v-btn value="manual" prepend-icon="mdi-format-list-bulleted">Manual List</v-btn>
-        </v-btn-toggle>
-
-        <template v-if="recipientSource === 'group'">
-          <v-select
-            v-model="contactGroupId" :items="whatsapp.contactGroups" item-title="name" item-value="id"
-            placeholder="Select contact group" variant="outlined" density="comfortable" class="mb-1"
-          >
-            <template #item="{ props: itemProps, item }">
-              <v-list-item v-bind="itemProps">
-                <template #append><v-chip size="x-small" variant="tonal">{{ item.raw.contacts_count ?? 0 }}</v-chip></template>
-              </v-list-item>
-            </template>
-          </v-select>
-          <div v-if="selectedGroup" class="text-caption text-medium-emphasis mb-4">
-            {{ selectedGroup.contacts_count ?? 0 }} contacts in this group — numbers marked invalid are skipped automatically.
-          </div>
-          <div v-else class="text-caption text-medium-emphasis mb-4">
-            No group selected yet.
-          </div>
-        </template>
-        <v-textarea
-          v-else
-          v-model="recipientsRaw" placeholder="919876543210&#10;919876543211" variant="outlined" rows="3" auto-grow
-          hint="One phone number per line or comma-separated — country code + digits, no + sign" persistent-hint class="mb-4"
-        />
+        <div class="text-caption text-medium-emphasis mb-1">RECIPIENTS — CONTACT GROUP</div>
+        <v-select
+          v-model="contactGroupId" :items="whatsapp.contactGroups" item-title="name" item-value="id"
+          placeholder="Select contact group" variant="outlined" density="comfortable" class="mb-1"
+        >
+          <template #item="{ props: itemProps, item }">
+            <v-list-item v-bind="itemProps">
+              <template #append><v-chip size="x-small" variant="tonal">{{ item.raw.contacts_count ?? 0 }}</v-chip></template>
+            </v-list-item>
+          </template>
+        </v-select>
+        <div v-if="selectedGroup" class="text-caption text-medium-emphasis mb-4">
+          {{ selectedGroup.contacts_count ?? 0 }} contacts in this group — numbers marked invalid are skipped automatically.
+          Template variables ({{ '\{\{name\}\}' }}, {{ '\{\{phone\}\}' }}, custom params) fill from each contact's imported data.
+        </div>
+        <div v-else class="text-caption text-medium-emphasis mb-4">
+          No group selected yet — import contacts via CSV/Excel under Contacts first.
+        </div>
 
         <div class="text-caption text-medium-emphasis mb-1">MESSAGE TYPE</div>
-        <v-btn-toggle v-model="messageTab" mandatory density="comfortable" class="mb-4 message-type-toggle flex-wrap" divided>
-          <v-btn value="text_media" prepend-icon="mdi-format-text">Text/Media</v-btn>
-          <v-btn value="buttons" prepend-icon="mdi-gesture-tap-button">Buttons</v-btn>
-          <v-btn value="list" prepend-icon="mdi-format-list-bulleted">List message</v-btn>
-          <v-btn value="poll" prepend-icon="mdi-poll">Poll</v-btn>
-          <v-btn value="template" prepend-icon="mdi-file-document-multiple-outline">Template</v-btn>
+        <v-btn-toggle v-model="messageTab" mandatory density="compact" class="mb-4 message-type-toggle flex-wrap" divided>
+          <v-btn size="small" value="text" prepend-icon="mdi-format-text">Text</v-btn>
+          <v-btn size="small" value="media" prepend-icon="mdi-image-outline">Media</v-btn>
+          <v-btn size="small" value="text_template" prepend-icon="mdi-text-box-outline">Text template</v-btn>
+          <v-btn size="small" value="buttons" prepend-icon="mdi-gesture-tap-button">Buttons</v-btn>
+          <v-btn size="small" value="list" prepend-icon="mdi-format-list-bulleted">List message</v-btn>
+          <v-btn size="small" value="poll" prepend-icon="mdi-poll">Poll</v-btn>
+          <v-btn size="small" value="template" prepend-icon="mdi-file-document-multiple-outline">Template</v-btn>
         </v-btn-toggle>
 
-        <template v-if="messageTab === 'text_media'">
-          <v-btn-toggle v-model="type" v-bind="typeAttrs" mandatory density="comfortable" class="mb-4 message-type-toggle" divided>
-            <v-btn value="text" prepend-icon="mdi-format-text">Text</v-btn>
-            <v-btn value="media" prepend-icon="mdi-image-outline">Media</v-btn>
-          </v-btn-toggle>
-
-          <template v-if="type === 'text'">
-            <div class="text-caption text-medium-emphasis mb-1">MESSAGE</div>
-            <v-textarea
-              v-model="body" v-bind="bodyAttrs" placeholder="Hi {{name}}, ..." variant="outlined" rows="3" auto-grow
-              hint="Supports spintax: {Hi|Hello|Hola} there" persistent-hint :error-messages="errors.body" class="mb-4"
+        <template v-if="messageTab === 'text'">
+          <div class="text-caption text-medium-emphasis mb-1">MESSAGE</div>
+          <v-textarea
+            v-model="body" v-bind="bodyAttrs" placeholder="Hi {{name}}, ..." variant="outlined" rows="3" auto-grow
+            hint="Supports spintax: {Hi|Hello|Hola} there" persistent-hint :error-messages="errors.body" class="mb-4"
+          />
+        </template>
+        <template v-else-if="messageTab === 'media'">
+          <div class="text-caption text-medium-emphasis mb-1">MEDIA URL</div>
+          <div class="d-flex ga-2 mb-4">
+            <v-text-field
+              v-model="mediaUrl" v-bind="mediaUrlAttrs" placeholder="https://…" variant="outlined" density="comfortable"
+              :error-messages="errors.media_url"
             />
-          </template>
-          <template v-else>
-            <div class="text-caption text-medium-emphasis mb-1">MEDIA URL</div>
-            <div class="d-flex ga-2 mb-4">
-              <v-text-field
-                v-model="mediaUrl" v-bind="mediaUrlAttrs" placeholder="https://…" variant="outlined" density="comfortable"
-                :error-messages="errors.media_url"
-              />
-              <AppButton variant="tonal" prepend-icon="mdi-folder-open-outline" @click="showMediaPicker = true">Browse</AppButton>
-            </div>
-            <MediaPickerDialog v-model="showMediaPicker" type="image" @selected="mediaUrl = $event" />
-            <div class="text-caption text-medium-emphasis mb-1">CAPTION (OPTIONAL)</div>
-            <v-textarea v-model="body" placeholder="Supports spintax" variant="outlined" rows="2" auto-grow class="mb-4" />
-          </template>
+            <AppButton variant="tonal" prepend-icon="mdi-folder-open-outline" @click="showMediaPicker = true">Browse</AppButton>
+          </div>
+          <MediaPickerDialog v-model="showMediaPicker" type="image" @selected="mediaUrl = $event" />
+          <div class="text-caption text-medium-emphasis mb-1">CAPTION (OPTIONAL)</div>
+          <v-textarea v-model="body" placeholder="Supports spintax" variant="outlined" rows="2" auto-grow class="mb-4" />
         </template>
 
         <template v-else>
@@ -299,11 +323,19 @@ const submit = handleSubmit(async (values) => {
           <v-alert v-if="selectedTemplateUnsendable" type="warning" variant="tonal" density="compact" class="mb-4">
             Bulk-sending {{ templateTypeMeta(selectedTemplate.type).label.toLowerCase() }} campaigns isn't available yet — coming in a future update.
           </v-alert>
+          <v-alert v-else-if="selectedTemplateBestEffort" type="info" variant="tonal" density="compact" class="mb-4">
+            {{ templateTypeMeta(selectedTemplate.type).label }} messages use WhatsApp's native interactive-message format on this unofficial connection —
+            recently switched from an older format that silently failed to deliver. Confirm it arrives on a real device before relying on it for a large campaign.
+          </v-alert>
         </template>
 
         <v-checkbox v-model="spintaxEnabled" label="Enable spintax randomization" density="comfortable" hide-details class="mb-1" />
         <v-checkbox
-          v-model="warmUpMode" label="Warm-up mode (doubles the send interval to reduce ban risk)"
+          v-model="warmUpMode" label="Warm-up mode (ramps this number's daily send cap up gradually: 20/day → 300/day by day 5, to reduce ban risk)"
+          density="comfortable" hide-details class="mb-1"
+        />
+        <v-checkbox
+          v-model="emojiRandomizer" label="Enable emoji randomizer (adds a random emoji to each message)"
           density="comfortable" hide-details class="mb-4"
         />
 

@@ -7,6 +7,7 @@ import { parsePhoneNumberFromString } from 'libphonenumber-js'
 import { useWhatsappStore } from '@/stores/whatsapp/whatsapp'
 import { useAlertStore } from '@/stores/alert/alert'
 import { fireSuccess } from '@core/plugins/sweetalert'
+import { templateTypeMeta } from '@core/utils/whatsappTemplateTypes'
 import AppButton from '@/components/AppButton.vue'
 import MediaPickerDialog from './template/MediaPickerDialog.vue'
 
@@ -21,7 +22,11 @@ const alertStore = useAlertStore()
 const saving = ref(false)
 const checkingStatus = ref(true)
 const showPicker = ref(false)
-const messageType = ref('text') // text|media|template
+
+// Same tab structure as the bulk campaign form (NewCampaignPanel) — Text and
+// Media as their own top-level tabs (no combined Text/Media tab with a
+// sub-toggle), plus one filter tab per template kind. Text is the default.
+const messageTab = ref('text') // 'text' | 'media' | 'text_template' | 'buttons' | 'list' | 'poll' | 'template'
 const selectedTemplateId = ref(null)
 const bodyTextareaRef = ref(null)
 
@@ -30,9 +35,46 @@ const statusColor = { connected: 'success', connecting: 'warning', disconnected:
 const selectedChannel = computed(() => props.channels.find((c) => c.id === channelId.value) ?? null)
 const selectedChannelDisconnected = computed(() => selectedChannel.value && selectedChannel.value.status !== 'connected')
 
-// Only types this platform can actually send today (see WhatsappTemplate::SENDABLE_TYPES).
-const SENDABLE_TYPES = ['text', 'text_image', 'text_video', 'text_document', 'text_audio']
-const sendableTemplates = computed(() => whatsapp.templates.filter((t) => SENDABLE_TYPES.includes(t.type)))
+const isFreeform = computed(() => messageTab.value === 'text' || messageTab.value === 'media')
+
+// Only types this platform can actually send today (see WhatsappTemplate::ALL_SENDABLE_TYPES).
+// Carousel isn't included — it needs a protocol this bridge doesn't support.
+const SENDABLE_TYPES = [
+  'text', 'text_image', 'text_video', 'text_document', 'text_audio',
+  'text_buttons', 'text_lists', 'text_poll', 'interactive_buttons',
+]
+
+// Buttons/list are newly re-enabled on the switched bridge engine and not yet
+// confirmed rendering on a real device — flagged in the UI until they are.
+const BEST_EFFORT_TYPES = ['text_buttons', 'interactive_buttons', 'text_lists']
+
+const filteredTemplates = computed(() => {
+  if (messageTab.value === 'text_template') return whatsapp.templates.filter((t) => t.type === 'text')
+  if (messageTab.value === 'buttons') return whatsapp.templates.filter((t) => ['text_buttons', 'interactive_buttons'].includes(t.type))
+  if (messageTab.value === 'list') return whatsapp.templates.filter((t) => t.type === 'text_lists')
+  if (messageTab.value === 'poll') return whatsapp.templates.filter((t) => t.type === 'text_poll')
+  if (messageTab.value === 'template') return whatsapp.templates
+
+  return []
+})
+
+const selectedTemplate = computed(() => filteredTemplates.value.find((t) => t.id === selectedTemplateId.value) ?? null)
+const selectedTemplateUnsendable = computed(() => selectedTemplate.value && !SENDABLE_TYPES.includes(selectedTemplate.value.type))
+const selectedTemplateBestEffort = computed(() => selectedTemplate.value && BEST_EFFORT_TYPES.includes(selectedTemplate.value.type))
+
+// {{...}} placeholders found in the selected template's body — one input each
+// so the sender types the real values ({{phone}} fills itself from the
+// recipient number, so it's excluded). Bulk campaigns don't need this: they
+// resolve variables per-recipient from the contact table instead.
+const variableValues = ref({})
+const templateVariables = computed(() => {
+  const text = selectedTemplate.value?.body ?? ''
+  const names = [...text.matchAll(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g)].map((m) => m[1])
+
+  return [...new Set(names)].filter((name) => name !== 'phone')
+})
+
+watch(selectedTemplateId, () => { variableValues.value = {} })
 
 const schema = toTypedSchema(
   yup.object({
@@ -81,16 +123,7 @@ onMounted(async () => {
   }
 })
 
-watch(messageType, (t) => {
-  if (t !== 'template') selectedTemplateId.value = null
-})
-
-watch(selectedTemplateId, (id) => {
-  const template = sendableTemplates.value.find((t) => t.id === id)
-  if (!template) return
-  body.value = template.body ?? ''
-  mediaUrl.value = template.media_url ?? ''
-})
+watch(messageTab, () => { selectedTemplateId.value = null })
 
 function getTextareaEl() {
   return bodyTextareaRef.value?.$el?.querySelector('textarea') ?? null
@@ -132,35 +165,45 @@ const submit = handleSubmit(async (values) => {
     return
   }
 
-  if (messageType.value === 'template' && !selectedTemplateId.value) {
-    alertStore.warning('Select a template to send.')
-    return
-  }
+  let payload
 
-  if (messageType.value === 'text' && !values.body) {
-    setErrors({ body: 'Message is required' })
-    return
-  }
-  if (messageType.value === 'media' && !values.media_url) {
-    setErrors({ media_url: 'Media URL is required' })
-    return
-  }
+  if (isFreeform.value) {
+    if (messageTab.value === 'text' && !values.body) {
+      setErrors({ body: 'Message is required' })
+      return
+    }
+    if (messageTab.value === 'media' && !values.media_url) {
+      setErrors({ media_url: 'Media URL is required' })
+      return
+    }
 
-  // A template is sent by reference — the server looks up its stored
-  // type/body/media_url itself, rather than trusting whatever this form
-  // echoed back into the body/media_url fields (which only exist here for
-  // preview and lose the distinction between an image/video/document/audio
-  // template that flattening them into a generic "media" send caused).
-  const payload = messageType.value === 'template'
-    ? { channel_id: values.channel_id, phone: values.phone, type: 'template', template_id: selectedTemplateId.value }
-    : { channel_id: values.channel_id, phone: values.phone, type: messageType.value, body: values.body, media_url: values.media_url }
+    payload = { channel_id: values.channel_id, phone: values.phone, type: messageTab.value, body: values.body, media_url: values.media_url }
+  } else {
+    if (!selectedTemplateId.value) {
+      alertStore.warning('Select a template.')
+      return
+    }
+    if (selectedTemplateUnsendable.value) {
+      alertStore.warning('This template type can\'t be sent yet.')
+      return
+    }
+
+    // Sent by reference — the server resolves the template's own stored
+    // type/body/media/interactive config itself (see MessageController).
+    payload = { channel_id: values.channel_id, phone: values.phone, type: 'template', template_id: selectedTemplateId.value }
+
+    if (templateVariables.value.length) {
+      payload.variables = variableValues.value
+    }
+  }
 
   saving.value = true
   try {
     await whatsapp.sendMessage(payload)
     fireSuccess('Message sent', `Your message to ${values.phone} was sent.`)
     resetForm({ values: { channel_id: values.channel_id, phone: '', body: '', media_url: '' } })
-    messageType.value = 'text'
+    messageTab.value = 'text'
+    selectedTemplateId.value = null
   } catch (e) {
     if (e.response?.status === 422) {
       const serverErrors = e.response.data?.errors ?? {}
@@ -226,52 +269,83 @@ const submit = handleSubmit(async (values) => {
         <div class="d-flex align-center ga-1 text-caption text-medium-emphasis mb-1">
           <v-icon icon="mdi-message-outline" size="14" />MESSAGE TYPE
         </div>
-        <v-btn-toggle v-model="messageType" mandatory density="comfortable" class="mb-4 message-type-toggle" divided>
-          <v-btn value="text" prepend-icon="mdi-format-text">Text</v-btn>
-          <v-btn value="media" prepend-icon="mdi-image-outline">Media</v-btn>
-          <v-btn value="template" prepend-icon="mdi-file-document-multiple-outline">Template</v-btn>
+        <v-btn-toggle v-model="messageTab" mandatory density="compact" class="mb-4 message-type-toggle flex-wrap" divided>
+          <v-btn size="small" value="text" prepend-icon="mdi-format-text">Text</v-btn>
+          <v-btn size="small" value="media" prepend-icon="mdi-image-outline">Media</v-btn>
+          <v-btn size="small" value="text_template" prepend-icon="mdi-text-box-outline">Text template</v-btn>
+          <v-btn size="small" value="buttons" prepend-icon="mdi-gesture-tap-button">Buttons</v-btn>
+          <v-btn size="small" value="list" prepend-icon="mdi-format-list-bulleted">List message</v-btn>
+          <v-btn size="small" value="poll" prepend-icon="mdi-poll">Poll</v-btn>
+          <v-btn size="small" value="template" prepend-icon="mdi-file-document-multiple-outline">Template</v-btn>
         </v-btn-toggle>
 
-        <template v-if="messageType === 'template'">
-          <div class="text-caption text-medium-emphasis mb-1">TEMPLATE</div>
-          <v-select
-            v-model="selectedTemplateId" :items="sendableTemplates" item-title="name" item-value="id"
-            placeholder="Select a template" variant="outlined" density="comfortable" class="mb-4"
+        <template v-if="isFreeform">
+          <template v-if="messageTab === 'media'">
+            <div class="text-caption text-medium-emphasis mb-1">MEDIA URL</div>
+            <div class="d-flex ga-2 mb-4">
+              <v-text-field
+                v-model="mediaUrl" v-bind="mediaUrlAttrs" placeholder="https://…" variant="outlined" density="comfortable"
+                :error-messages="errors.media_url"
+              />
+              <AppButton variant="tonal" prepend-icon="mdi-folder-open-outline" @click="showPicker = true">Browse</AppButton>
+            </div>
+            <MediaPickerDialog v-model="showPicker" type="image" @selected="mediaUrl = $event" />
+          </template>
+
+          <div class="d-flex align-center justify-space-between mb-1">
+            <div class="d-flex align-center ga-1 text-caption text-medium-emphasis">
+              <v-icon icon="mdi-pencil-outline" size="14" />MESSAGE / CAPTION
+            </div>
+            <span class="text-caption text-medium-emphasis">{{ (body ?? '').length }} / 4096</span>
+          </div>
+          <v-textarea
+            ref="bodyTextareaRef" v-model="body" v-bind="bodyAttrs" placeholder="Type your message here..."
+            variant="outlined" rows="6" auto-grow maxlength="4096" :error-messages="errors.body"
           />
+
+          <div class="d-flex ga-1 mb-6">
+            <v-btn size="small" variant="tonal" @click="wrapSelection('*')"><strong>B</strong></v-btn>
+            <v-btn size="small" variant="tonal" @click="wrapSelection('_')"><em>I</em></v-btn>
+            <v-btn size="small" variant="tonal" @click="wrapSelection('~')"><s>S</s></v-btn>
+            <v-btn size="small" variant="tonal" @click="insertVariable('{{name}}')">{{ '{}' }}</v-btn>
+          </div>
         </template>
 
-        <template v-if="messageType === 'media' || (messageType === 'template' && selectedTemplateId)">
-          <div class="text-caption text-medium-emphasis mb-1">MEDIA URL</div>
-          <div class="d-flex ga-2 mb-4">
-            <v-text-field
-              v-model="mediaUrl" v-bind="mediaUrlAttrs" placeholder="https://…" variant="outlined" density="comfortable"
-              :error-messages="errors.media_url" :readonly="messageType === 'template'"
-            />
-            <AppButton v-if="messageType === 'media'" variant="tonal" prepend-icon="mdi-folder-open-outline" @click="showPicker = true">
-              Browse
-            </AppButton>
-          </div>
-          <MediaPickerDialog v-model="showPicker" type="image" @selected="mediaUrl = $event" />
+        <template v-else>
+          <v-alert v-if="!filteredTemplates.length" type="info" variant="tonal" density="compact" class="mb-4">
+            No saved templates of this type yet — create one under Templates first.
+          </v-alert>
+          <v-radio-group v-else v-model="selectedTemplateId" class="mb-2">
+            <v-card v-for="t in filteredTemplates" :key="t.id" variant="outlined" class="d-flex align-center pa-3 mb-2">
+              <v-radio :value="t.id" density="comfortable" hide-details />
+              <div class="ml-2 flex-grow-1">
+                <div class="text-body-2 font-weight-medium">{{ t.name }}</div>
+                <div class="text-caption text-medium-emphasis">{{ templateTypeMeta(t.type).label }}</div>
+              </div>
+            </v-card>
+          </v-radio-group>
+          <v-alert v-if="selectedTemplateUnsendable" type="warning" variant="tonal" density="compact" class="mb-4">
+            Sending {{ templateTypeMeta(selectedTemplate.type).label.toLowerCase() }} messages isn't available yet — coming in a future update.
+          </v-alert>
+          <v-alert v-else-if="selectedTemplateBestEffort" type="info" variant="tonal" density="compact" class="mb-4">
+            {{ templateTypeMeta(selectedTemplate.type).label }} messages use WhatsApp's native interactive-message format on this unofficial connection —
+            recently switched from an older format that silently failed to deliver. Confirm it arrives on a real device before relying on it.
+          </v-alert>
+
+          <template v-if="selectedTemplate && templateVariables.length">
+            <v-card variant="tonal" class="pa-4 mb-4">
+              <div class="text-overline text-medium-emphasis mb-2">FILL TEMPLATE VARIABLES</div>
+              <v-text-field
+                v-for="variable in templateVariables" :key="variable"
+                v-model="variableValues[variable]" :label="variable" variant="outlined" density="comfortable" class="mb-2"
+                :placeholder="`Value for {{${variable}}}`" hide-details
+              />
+              <div class="text-caption text-medium-emphasis mt-2">
+                Left-empty variables fall back to the recipient's saved contact data (if any), then blank.
+              </div>
+            </v-card>
+          </template>
         </template>
-
-        <div class="d-flex align-center justify-space-between mb-1">
-          <div class="d-flex align-center ga-1 text-caption text-medium-emphasis">
-            <v-icon icon="mdi-pencil-outline" size="14" />MESSAGE / CAPTION
-          </div>
-          <span class="text-caption text-medium-emphasis">{{ (body ?? '').length }} / 4096</span>
-        </div>
-        <v-textarea
-          ref="bodyTextareaRef" v-model="body" v-bind="bodyAttrs" placeholder="Type your message here..."
-          variant="outlined" rows="6" auto-grow maxlength="4096" :error-messages="errors.body"
-          :readonly="messageType === 'template'"
-        />
-
-        <div class="d-flex ga-1 mb-6">
-          <v-btn size="small" variant="tonal" @click="wrapSelection('*')"><strong>B</strong></v-btn>
-          <v-btn size="small" variant="tonal" @click="wrapSelection('_')"><em>I</em></v-btn>
-          <v-btn size="small" variant="tonal" @click="wrapSelection('~')"><s>S</s></v-btn>
-          <v-btn size="small" variant="tonal" @click="insertVariable('{{name}}')">{{ '{}' }}</v-btn>
-        </div>
 
         <AppButton block size="x-large" :loading="saving" prepend-icon="mdi-send" class="send-button" @click="submit">
           Send Message

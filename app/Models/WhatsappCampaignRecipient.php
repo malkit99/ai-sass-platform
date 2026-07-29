@@ -17,6 +17,7 @@ class WhatsappCampaignRecipient extends Model
         'campaign_id',
         'phone',
         'status',
+        'scheduled_at',
         'sent_at',
         'error',
     ];
@@ -24,6 +25,7 @@ class WhatsappCampaignRecipient extends Model
     protected function casts(): array
     {
         return [
+            'scheduled_at' => 'datetime',
             'sent_at' => 'datetime',
         ];
     }

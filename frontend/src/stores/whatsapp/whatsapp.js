@@ -83,6 +83,10 @@ export const useWhatsappStore = defineStore('whatsapp', {
       const { data } = await api.get('/api/whatsapp/campaigns')
       this.campaigns = data
     },
+    async fetchCampaign(campaignId) {
+      const { data } = await api.get(`/api/whatsapp/campaigns/${campaignId}`)
+      return data
+    },
     async createCampaign(payload) {
       const { data } = await api.post('/api/whatsapp/campaigns', payload)
       this.campaigns.unshift(data)

@@ -118,12 +118,14 @@ class BridgeClient
     }
 
     /**
-     * @param  string  $type  'text'|'media'
+     * @param  string  $type  'text'|'media'|'poll'|'buttons'|'list'
      * @param  string|null  $mediaType  'image'|'video'|'document'|'audio' — explicit media kind
      *                                  (e.g. from a template's own type) so the bridge doesn't have
      *                                  to guess one from the media_url's file extension.
+     * @param  array|null  $interactive  Poll options / buttons / list sections — see
+     *                                   WhatsappTemplate::buildInteractiveConfig(). Ignored for text/media.
      */
-    public function sendMessage(int $channelId, string $phone, string $type, ?string $body, ?string $mediaUrl = null, ?string $mediaType = null): array
+    public function sendMessage(int $channelId, string $phone, string $type, ?string $body, ?string $mediaUrl = null, ?string $mediaType = null, ?array $interactive = null): array
     {
         // A media send needs Baileys to download the file, encrypt it, and
         // upload it to WhatsApp's servers before the bridge responds — the
@@ -136,6 +138,7 @@ class BridgeClient
             'body' => $body,
             'media_url' => $mediaUrl,
             'media_type' => $mediaType,
+            'interactive' => $interactive,
         ]);
 
         if ($response->failed()) {

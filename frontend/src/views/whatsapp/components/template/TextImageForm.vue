@@ -22,7 +22,7 @@ const schema = toTypedSchema(
   yup.object({
     name: yup.string().required('Template name is required'),
     media_url: yup.string().required('Image URL is required').url('Enter a valid URL'),
-    body: yup.string().nullable(),
+    body: yup.string().nullable().max(1024, 'Caption must be 1024 characters or fewer'),
     footer: yup.string().nullable().max(60, 'Footer must be 60 characters or fewer'),
   }),
 )
@@ -42,7 +42,7 @@ const [mediaUrl, mediaUrlAttrs] = defineField('media_url')
 const [body, bodyAttrs] = defineField('body')
 const [footer, footerAttrs] = defineField('footer')
 
-const variableHint = 'Use {{name}}, {{phone}} for variables.'
+const variableHint = 'Use {{name}}, {{phone}}, or {{param1}}–{{param20}} (contact import columns) for variables.'
 
 const submit = handleSubmit(async (values) => {
   saving.value = true
@@ -91,7 +91,7 @@ const submit = handleSubmit(async (values) => {
     <v-card class="pa-4">
       <div class="text-caption text-medium-emphasis mb-1">CAPTION</div>
       <v-textarea
-        v-model="body" v-bind="bodyAttrs" placeholder="Hi {{name}}, ..." variant="outlined" rows="6" auto-grow
+        v-model="body" v-bind="bodyAttrs" placeholder="Hi {{name}}, ..." variant="outlined" rows="6" auto-grow maxlength="1024" counter
       />
       <div class="d-flex align-center ga-1 text-caption text-medium-emphasis mt-1">
         <v-icon icon="mdi-information-outline" size="14" />

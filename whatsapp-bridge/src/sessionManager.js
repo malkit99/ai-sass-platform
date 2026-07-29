@@ -1,20 +1,27 @@
+// Switched from @whiskeysockets/baileys to this maintained fork specifically
+// for its interactive-message support (buttons/list) — six different manual
+// proto constructions on vanilla Baileys were all confirmed (live, Android)
+// to silently fail; this fork's own shorthand (buttons/sections/templateButtons
+// in generateWAMessageContent) is a different, more complete implementation,
+// not just a different way of building the same bytes.
 import makeWASocket, {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   DisconnectReason,
   Browsers,
-} from '@whiskeysockets/baileys';
+} from '@itsliaaa/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import QRCode from 'qrcode';
 import path from 'path';
 import fs from 'fs';
 import { sendWebhook } from './webhookClient.js';
+import { transcodeToOpus } from './audioTranscoder.js';
 
 const SESSIONS_DIR = path.resolve(process.cwd(), 'sessions');
 const logger = pino({ level: 'warn' });
 
-/** @type {Map<string, { sock: import('@whiskeysockets/baileys').WASocket, status: string, qr: string|null }>} */
+/** @type {Map<string, { sock: import('@itsliaaa/baileys').WASocket, status: string, qr: string|null }>} */
 const instances = new Map();
 
 function sessionPath(channelId) {
@@ -228,13 +235,23 @@ function mediaKindFromUrl(mediaUrl) {
   return 'image';
 }
 
-function buildMediaContent(mediaUrl, body, mediaType) {
+async function buildMediaContent(mediaUrl, body, mediaType) {
   const kind = mediaType || mediaKindFromUrl(mediaUrl);
   const ext = mediaUrl?.split(/[?#]/)[0]?.split('.').pop()?.toLowerCase();
   const mimetype = MIME_TYPES[ext];
 
   if (kind === 'video') return { video: { url: mediaUrl }, caption: body ?? undefined, mimetype: mimetype ?? 'video/mp4' };
-  if (kind === 'audio') return { audio: { url: mediaUrl }, mimetype: mimetype ?? 'audio/mpeg', ptt: false };
+  if (kind === 'audio') {
+    // Raw mp3/wav/m4a audio is unreliable over this unofficial connection —
+    // WhatsApp's own recording/playback pipeline is built around OGG/Opus, so
+    // anything not already in that format gets transcoded before sending (see
+    // audioTranscoder.js; cached by source URL so a bulk campaign only pays
+    // the conversion cost once, not per recipient).
+    const isAlreadyOpus = mimetype?.includes('ogg');
+    const audioPath = isAlreadyOpus ? mediaUrl : await transcodeToOpus(mediaUrl);
+
+    return { audio: { url: audioPath }, mimetype: 'audio/ogg; codecs=opus', ptt: false };
+  }
   if (kind === 'document') {
     return {
       document: { url: mediaUrl },
@@ -247,16 +264,75 @@ function buildMediaContent(mediaUrl, body, mediaType) {
   return { image: { url: mediaUrl }, caption: body ?? undefined };
 }
 
-export async function sendMessage(channelId, phone, type, body, mediaUrl, mediaType) {
+export async function sendMessage(channelId, phone, type, body, mediaUrl, mediaType, interactive) {
   const entry = instances.get(channelId);
   if (!entry || entry.status !== 'connected') {
     throw new Error('Instance not connected');
   }
 
   const jid = toJid(phone);
-  const content = type === 'media' ? buildMediaContent(mediaUrl, body, mediaType) : { text: body };
 
-  const result = await entry.sock.sendMessage(jid, content);
+  if (type === 'poll') {
+    const result = await entry.sock.sendMessage(jid, {
+      poll: { name: body ?? '', values: interactive?.options ?? [], selectableCount: 1 },
+    });
+    return { message_id: result?.key?.id ?? null };
+  }
+
+  // @itsliaaa/baileys' `nativeFlow` shorthand — builds an
+  // interactiveMessage.nativeFlowMessage AND (crucially) the fork's own
+  // relayMessage injects a `biz` stanza node carrying a native-flow marker
+  // alongside it (getBizBinaryNode in its WABinary/generic-utils.js). That
+  // stanza-level node is the ingredient vanilla Baileys never sent — our
+  // earlier bare-interactiveMessage attempt delivered body text but no
+  // buttons, exactly matching its absence. NOT the fork's `templateButtons`
+  // shorthand: that builds templateMessage, which the fork's own source notes
+  // renders only on Web/Desktop/iOS, never in normal Android chats.
+  if (type === 'buttons') {
+    const result = await entry.sock.sendMessage(jid, {
+      text: body ?? '',
+      footer: interactive?.footer || undefined,
+      nativeFlow: (interactive?.buttons ?? []).map((label, i) => ({ text: label, id: `btn_${i}` })),
+    });
+    return { message_id: result?.key?.id ?? null };
+  }
+
+  if (type === 'list') {
+    // A single `sections` button becomes a `single_select` native flow — the
+    // modern list-message form (legacy listMessage is Web/Desktop-only now).
+    const result = await entry.sock.sendMessage(jid, {
+      text: body ?? '',
+      footer: interactive?.footer || undefined,
+      nativeFlow: [{
+        text: interactive?.button_text || 'View Options',
+        sections: (interactive?.sections ?? []).map((section) => ({
+          title: section.title,
+          rows: (section.rows ?? []).map((row) => ({
+            title: row.title,
+            description: row.description ?? '',
+            id: row.id || row.title,
+          })),
+        })),
+      }],
+    });
+    return { message_id: result?.key?.id ?? null };
+  }
+
+  if (type === 'media') {
+    // WhatsApp audio messages have no caption field at all (same as the real
+    // app — you can't attach text to a voice/audio message there either), so
+    // a non-empty body would otherwise silently vanish. Sent as its own text
+    // message first instead of being dropped.
+    if ((mediaType || mediaKindFromUrl(mediaUrl)) === 'audio' && body) {
+      await entry.sock.sendMessage(jid, { text: body });
+    }
+
+    const content = await buildMediaContent(mediaUrl, body, mediaType);
+    const result = await entry.sock.sendMessage(jid, content);
+    return { message_id: result?.key?.id ?? null };
+  }
+
+  const result = await entry.sock.sendMessage(jid, { text: body });
   return { message_id: result?.key?.id ?? null };
 }
 

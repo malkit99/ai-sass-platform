@@ -114,7 +114,7 @@ async function onConnected() {
       <TemplatesPanel v-else-if="active === 'templates'" />
       <ContactsPanel v-else-if="active === 'contacts'" />
 
-      <BulkCampaignsPanel v-else-if="active === 'bulk'" />
+      <BulkCampaignsPanel v-else-if="active === 'bulk'" @connect-channel="connectExisting" />
       <AutoresponderPanel v-else-if="active === 'autoresponder'" />
       <ChatbotPanel v-else-if="active === 'chatbot'" />
 

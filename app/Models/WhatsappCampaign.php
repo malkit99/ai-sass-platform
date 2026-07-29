@@ -35,7 +35,9 @@ class WhatsappCampaign extends Model
         'body',
         'media_url',
         'media_type',
+        'interactive_config',
         'spintax_enabled',
+        'emoji_randomizer',
         'warm_up_mode',
         'min_interval_seconds',
         'max_interval_seconds',
@@ -50,8 +52,10 @@ class WhatsappCampaign extends Model
     {
         return [
             'spintax_enabled' => 'boolean',
+            'emoji_randomizer' => 'boolean',
             'warm_up_mode' => 'boolean',
             'allowed_hours' => 'array',
+            'interactive_config' => 'array',
             'scheduled_at' => 'datetime',
             'next_run_at' => 'datetime',
         ];

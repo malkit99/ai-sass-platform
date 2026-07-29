@@ -10,8 +10,11 @@ use App\Models\WhatsappCampaign;
 use App\Models\WhatsappCampaignRecipient;
 use App\Models\WhatsappCreditBalance;
 use App\Models\WhatsappCreditLedger;
+use App\Models\WhatsappContact;
 use App\Services\Whatsapp\BridgeClient;
+use App\Services\Whatsapp\EmojiRandomizer;
 use App\Services\Whatsapp\Spintax;
+use App\Services\Whatsapp\TemplateVariables;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -77,10 +80,20 @@ class SendCampaignMessageJob implements ShouldQueue
             return;
         }
 
-        $body = $campaign->spintax_enabled ? Spintax::render($campaign->body) : $campaign->body;
+        // {{name}}/{{phone}}/custom params resolve from the recipient's contact
+        // row (CSV/Excel-imported data) — the campaign's stored body keeps the
+        // raw placeholders and each recipient gets their own values.
+        $contact = WhatsappContact::withoutGlobalScopes()
+            ->where('account_id', $campaign->account_id)
+            ->where('phone', $recipient->phone)
+            ->first();
+
+        $body = TemplateVariables::render($campaign->body, TemplateVariables::forContact($recipient->phone, $contact));
+        $body = $campaign->spintax_enabled ? Spintax::render($body) : $body;
+        $body = $campaign->emoji_randomizer ? EmojiRandomizer::append($body) : $body;
 
         try {
-            $bridge->sendMessage($channel->id, $recipient->phone, $campaign->message_type, $body, $campaign->media_url, $campaign->media_type);
+            $bridge->sendMessage($channel->id, $recipient->phone, $campaign->message_type, $body, $campaign->media_url, $campaign->media_type, $campaign->interactive_config);
 
             $conversation = Conversation::withoutGlobalScopes()->firstOrCreate(
                 ['channel_id' => $channel->id, 'contact_phone' => $recipient->phone],

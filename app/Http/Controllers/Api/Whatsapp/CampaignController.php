@@ -9,7 +9,6 @@ use App\Models\WhatsappCampaignRecipient;
 use App\Models\WhatsappContact;
 use App\Models\WhatsappContactGroup;
 use App\Models\WhatsappTemplate;
-use App\Rules\ValidMobileNumber;
 use App\Services\Whatsapp\CampaignDispatcher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -54,12 +53,14 @@ class CampaignController extends Controller
             'body' => ['required_if:message_type,text', 'nullable', 'string', 'max:4096'],
             'media_url' => ['required_if:message_type,media', 'nullable', 'string', 'url'],
             'spintax_enabled' => ['boolean'],
+            'emoji_randomizer' => ['boolean'],
             'warm_up_mode' => ['boolean'],
             'min_interval_seconds' => ['required', 'integer', 'min:1', 'max:3600'],
             'max_interval_seconds' => ['required', 'integer', 'gte:min_interval_seconds', 'max:3600'],
-            'contact_group_id' => ['required_without:recipients', 'nullable', 'integer', 'exists:whatsapp_contact_groups,id'],
-            'recipients' => ['required_without:contact_group_id', 'nullable', 'array', 'min:1', 'max:5000'],
-            'recipients.*' => ['distinct', new ValidMobileNumber],
+            // Contact group is the only recipient source — {{name}}/{{phone}}/
+            // custom-param variables resolve per-recipient from the contact
+            // table, which a manual phone list has no rows in.
+            'contact_group_id' => ['required', 'integer', 'exists:whatsapp_contact_groups,id'],
             // "Time Post" — null/omitted means run immediately.
             'scheduled_at' => ['nullable', 'date', 'after_or_equal:now'],
             // "Schedule Time" hour filter (screenshot 76) — empty/omitted means any hour.
@@ -72,57 +73,54 @@ class CampaignController extends Controller
         $this->authorize('view', $channel);
 
         $mediaType = null;
+        $interactiveConfig = null;
 
         // A "Buttons"/"List message"/"Poll"/"Template" pick (screenshot 76's
         // filter row) references a saved template by id rather than trusting
         // client-echoed body/media_url — same authoritative pattern as
-        // MessageController's single-send template path.
+        // MessageController's single-send template path — see
+        // WhatsappTemplate::interactiveKind() for the interactive send paths.
         if ($data['message_type'] === 'template') {
             $template = WhatsappTemplate::findOrFail($data['template_id']);
 
-            if (! in_array($template->type, WhatsappTemplate::SENDABLE_TYPES, true)) {
+            if (! in_array($template->type, WhatsappTemplate::ALL_SENDABLE_TYPES, true)) {
                 throw ValidationException::withMessages([
-                    'template_id' => ['Bulk-sending this template type (buttons/list/poll/carousel) isn\'t supported yet — coming in a future update.'],
+                    'template_id' => ['Bulk-sending this template type (carousel) isn\'t supported yet — coming in a future update.'],
                 ]);
             }
 
             $data['body'] = $template->body;
-            $data['media_url'] = $template->media_url;
-            $mediaType = $template->mediaKind();
-            $data['message_type'] = $mediaType ? 'media' : 'text';
+
+            if ($interactiveKind = $template->interactiveKind()) {
+                $data['message_type'] = $interactiveKind;
+                $interactiveConfig = $template->buildInteractiveConfig();
+            } else {
+                $data['media_url'] = $template->media_url;
+                $mediaType = $template->mediaKind();
+                $data['message_type'] = $mediaType ? 'media' : 'text';
+            }
         }
 
-        if (! empty($data['contact_group_id'])) {
-            $group = WhatsappContactGroup::findOrFail($data['contact_group_id']);
-            $this->authorize('view', $group);
+        $group = WhatsappContactGroup::findOrFail($data['contact_group_id']);
+        $this->authorize('view', $group);
 
-            // Known-invalid numbers (bad format, or previously failed a live
-            // WhatsApp-registration check) are skipped rather than burning a
-            // credit and a send attempt on a number that will only bounce.
-            $recipients = $group->contacts()
-                ->where('status', '!=', WhatsappContact::STATUS_INVALID)
-                ->limit(5000)
-                ->pluck('phone')
-                ->all();
+        // Known-invalid numbers (bad format, or previously failed a live
+        // WhatsApp-registration check) are skipped rather than burning a
+        // credit and a send attempt on a number that will only bounce.
+        $recipients = $group->contacts()
+            ->where('status', '!=', WhatsappContact::STATUS_INVALID)
+            ->limit(5000)
+            ->pluck('phone')
+            ->all();
 
-            if (! $recipients) {
-                throw ValidationException::withMessages([
-                    'contact_group_id' => ['This contact group has no valid contacts to message.'],
-                ]);
-            }
-        } else {
-            $recipients = array_values(array_unique($data['recipients']));
+        if (! $recipients) {
+            throw ValidationException::withMessages([
+                'contact_group_id' => ['This contact group has no valid contacts to message.'],
+            ]);
         }
 
         $minInterval = max(self::MIN_INTERVAL_FLOOR, $data['min_interval_seconds']);
         $maxInterval = min(self::MAX_INTERVAL_CEILING, max($minInterval, $data['max_interval_seconds']));
-
-        // Warm-up mode widens the gap further — pacing is the whole point of the
-        // feature, not just a UI label (see 05-integrations.md anti-ban note).
-        if ($data['warm_up_mode'] ?? false) {
-            $minInterval *= 2;
-            $maxInterval *= 2;
-        }
 
         $startAt = ! empty($data['scheduled_at']) ? Carbon::parse($data['scheduled_at']) : now();
         $allowedHours = ! empty($data['allowed_hours']) ? array_values(array_unique($data['allowed_hours'])) : null;
@@ -135,7 +133,9 @@ class CampaignController extends Controller
             'body' => $data['body'] ?? null,
             'media_url' => $data['media_url'] ?? null,
             'media_type' => $mediaType,
+            'interactive_config' => $interactiveConfig,
             'spintax_enabled' => $data['spintax_enabled'] ?? false,
+            'emoji_randomizer' => $data['emoji_randomizer'] ?? false,
             'warm_up_mode' => $data['warm_up_mode'] ?? false,
             'min_interval_seconds' => $minInterval,
             'max_interval_seconds' => $maxInterval,
@@ -146,7 +146,7 @@ class CampaignController extends Controller
             'status' => $startAt->isFuture() ? WhatsappCampaign::STATUS_SCHEDULED : WhatsappCampaign::STATUS_RUNNING,
         ]);
 
-        $this->dispatcher->dispatchRecipients($campaign, $recipients, $minInterval, $maxInterval, $allowedHours, $startAt);
+        $this->dispatcher->dispatchRecipients($campaign, $channel, $recipients, $minInterval, $maxInterval, $allowedHours, $startAt);
 
         return response()->json($campaign->load('recipients'), 201);
     }

@@ -7,10 +7,14 @@ import AppButton from '@/components/AppButton.vue'
 import AppDialog from '@/components/AppDialog.vue'
 import CampaignsList from './CampaignsList.vue'
 import NewCampaignPanel from './NewCampaignPanel.vue'
+import CampaignReportPanel from './CampaignReportPanel.vue'
+
+defineEmits(['connect-channel'])
 
 const whatsapp = useWhatsappStore()
 const alertStore = useAlertStore()
-const view = ref('list') // 'list' | 'new'
+const view = ref('list') // 'list' | 'new' | 'report'
+const reportCampaignId = ref(null)
 
 const renaming = ref(null)
 const renameValue = ref('')
@@ -64,8 +68,9 @@ async function deleteCampaign(campaign) {
   alertStore.info('Campaign deleted.')
 }
 
-function reportCampaign() {
-  alertStore.info('A detailed campaign report view is coming in a future update.')
+function reportCampaign(campaign) {
+  reportCampaignId.value = campaign.id
+  view.value = 'report'
 }
 
 function onCreated() {
@@ -82,11 +87,11 @@ function onCreated() {
           <h2 class="text-h5">Bulk Messaging</h2>
           <div class="text-caption text-medium-emphasis">Send to multiple recipients with anti-ban pacing</div>
         </div>
-        <AppButton prepend-icon="mdi-plus" :disabled="!whatsapp.connectedChannels.length" @click="view = 'new'">New Campaign</AppButton>
+        <AppButton prepend-icon="mdi-plus" :disabled="!whatsapp.channels.length" @click="view = 'new'">New Campaign</AppButton>
       </div>
 
-      <v-alert v-if="!whatsapp.connectedChannels.length" type="info" variant="tonal" class="mb-4">
-        Connect a WhatsApp account first to run a campaign.
+      <v-alert v-if="!whatsapp.channels.length" type="info" variant="tonal" class="mb-4">
+        Add a WhatsApp account first to run a campaign.
       </v-alert>
 
       <CampaignsList
@@ -95,7 +100,12 @@ function onCreated() {
       />
     </template>
 
-    <NewCampaignPanel v-else :channels="whatsapp.connectedChannels" @back="view = 'list'" @created="onCreated" />
+    <NewCampaignPanel
+      v-else-if="view === 'new'" :channels="whatsapp.channels"
+      @back="view = 'list'" @created="onCreated" @connect-channel="$emit('connect-channel', $event)"
+    />
+
+    <CampaignReportPanel v-else-if="view === 'report'" :campaign-id="reportCampaignId" @back="view = 'list'" />
 
     <AppDialog :model-value="!!renaming" title="Rename Campaign" max-width="420" @update:model-value="renaming = null">
       <v-text-field v-model="renameValue" label="Campaign name" variant="outlined" density="comfortable" autofocus />

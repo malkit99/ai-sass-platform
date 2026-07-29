@@ -24,7 +24,7 @@ const pollOptions = ref(
 const schema = toTypedSchema(
   yup.object({
     name: yup.string().required('Template name is required'),
-    body: yup.string().required('Poll question is required'),
+    body: yup.string().required('Poll question is required').max(255, 'Poll question must be 255 characters or fewer'),
     footer: yup.string().nullable().max(60, 'Footer must be 60 characters or fewer'),
   }),
 )
@@ -55,6 +55,10 @@ const submit = handleSubmit(async (values) => {
 
   if (options.length < 2) {
     alertStore.warning('Add at least 2 poll options.')
+    return
+  }
+  if (options.some((o) => o.length > 100)) {
+    alertStore.warning('Poll options must be 100 characters or fewer.')
     return
   }
 
@@ -95,7 +99,8 @@ const submit = handleSubmit(async (values) => {
       <div v-for="(option, index) in pollOptions" :key="index" class="d-flex align-center ga-2 mb-2">
         <span class="text-caption text-medium-emphasis" style="width: 20px">{{ index + 1 }}.</span>
         <v-text-field
-          v-model="pollOptions[index]" :placeholder="`Option ${index + 1}`" density="compact" variant="outlined" hide-details
+          v-model="pollOptions[index]" :placeholder="`Option ${index + 1} (max 100)`" density="compact" variant="outlined" hide-details
+          maxlength="100"
         />
         <v-btn
           icon="mdi-close-circle" size="small" variant="text" color="error"
@@ -108,7 +113,7 @@ const submit = handleSubmit(async (values) => {
       <div class="text-caption text-medium-emphasis mb-1">POLL QUESTION</div>
       <v-textarea
         v-model="body" v-bind="bodyAttrs" placeholder="What should we improve?" variant="outlined" rows="4" auto-grow
-        :error-messages="errors.body"
+        maxlength="255" counter :error-messages="errors.body"
       />
     </v-card>
 

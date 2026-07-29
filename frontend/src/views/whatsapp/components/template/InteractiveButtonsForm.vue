@@ -42,7 +42,7 @@ const mediaIcon = { image: 'mdi-image-outline', video: 'mdi-video-outline', docu
 const schema = toTypedSchema(
   yup.object({
     name: yup.string().required('Template name is required'),
-    body: yup.string().required('Message is required'),
+    body: yup.string().required('Message is required').max(1024, 'Message must be 1024 characters or fewer'),
     footer: yup.string().nullable().max(60, 'Footer must be 60 characters or fewer'),
   }),
 )
@@ -56,7 +56,7 @@ const [name, nameAttrs] = defineField('name')
 const [body, bodyAttrs] = defineField('body')
 const [footer, footerAttrs] = defineField('footer')
 
-const variableHint = 'Use {{name}}, {{phone}} for variables.'
+const variableHint = 'Use {{name}}, {{phone}}, or {{param1}}–{{param20}} (contact import columns) for variables.'
 
 function addButton() {
   if (buttons.value.length >= 3) {
@@ -77,6 +77,10 @@ const submit = handleSubmit(async (values) => {
   }
   if (buttons.value.some((b) => !b.label)) {
     alertStore.warning('Every button needs a label.')
+    return
+  }
+  if (buttons.value.some((b) => b.label.length > 20)) {
+    alertStore.warning('Button labels must be 20 characters or fewer.')
     return
   }
 
@@ -152,7 +156,7 @@ const submit = handleSubmit(async (values) => {
       <div class="text-caption text-medium-emphasis mb-1">MESSAGE CONTENT</div>
       <v-textarea
         v-model="body" v-bind="bodyAttrs" placeholder="Hi {{name}}, ..." variant="outlined" rows="6" auto-grow
-        :error-messages="errors.body"
+        maxlength="1024" counter :error-messages="errors.body"
       />
       <div class="d-flex align-center ga-1 text-caption text-medium-emphasis mt-1">
         <v-icon icon="mdi-information-outline" size="14" />

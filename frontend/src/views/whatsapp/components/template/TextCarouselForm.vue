@@ -22,7 +22,7 @@ const pickerForCard = ref(null)
 const schema = toTypedSchema(
   yup.object({
     name: yup.string().required('Template name is required'),
-    body: yup.string().nullable(),
+    body: yup.string().nullable().max(1024, 'Message must be 1024 characters or fewer'),
     footer: yup.string().nullable().max(60, 'Footer must be 60 characters or fewer'),
   }),
 )
@@ -69,6 +69,22 @@ function onMediaSelected(url) {
 const submit = handleSubmit(async (values) => {
   if (!cards.value.length) {
     alertStore.warning('Add at least one card.')
+    return
+  }
+  if (cards.value.length > 10) {
+    alertStore.warning('WhatsApp allows up to 10 carousel cards.')
+    return
+  }
+  if (cards.value.some((c) => (c.title ?? '').length > 80)) {
+    alertStore.warning('Card titles must be 80 characters or fewer.')
+    return
+  }
+  if (cards.value.some((c) => (c.body ?? '').length > 160)) {
+    alertStore.warning('Card descriptions must be 160 characters or fewer.')
+    return
+  }
+  if (cards.value.some((c) => c.buttons.some((b) => (b.label ?? '').length > 20))) {
+    alertStore.warning('Button labels must be 20 characters or fewer.')
     return
   }
 
@@ -119,11 +135,11 @@ const submit = handleSubmit(async (values) => {
         </v-col>
 
         <v-col cols="12" sm="8">
-          <div class="text-caption text-medium-emphasis mb-1">CARD TITLE</div>
-          <v-text-field v-model="card.title" placeholder="Title" density="compact" variant="outlined" class="mb-3" />
+          <div class="text-caption text-medium-emphasis mb-1">CARD TITLE (MAX 80)</div>
+          <v-text-field v-model="card.title" placeholder="Title" density="compact" variant="outlined" maxlength="80" class="mb-3" />
 
-          <div class="text-caption text-medium-emphasis mb-1">DESCRIPTION</div>
-          <v-textarea v-model="card.body" placeholder="Body" density="compact" variant="outlined" rows="3" auto-grow class="mb-3" />
+          <div class="text-caption text-medium-emphasis mb-1">DESCRIPTION (MAX 160)</div>
+          <v-textarea v-model="card.body" placeholder="Body" density="compact" variant="outlined" rows="3" auto-grow maxlength="160" class="mb-3" />
 
           <TemplateButtonRow
             v-for="(button, bIndex) in card.buttons" :key="bIndex" :model-value="button"
@@ -147,6 +163,7 @@ const submit = handleSubmit(async (values) => {
       <div class="text-caption text-medium-emphasis mb-1">MESSAGE CONTENT</div>
       <v-textarea
         v-model="body" v-bind="bodyAttrs" placeholder="Hi {{name}}, ..." variant="outlined" rows="4" auto-grow
+        maxlength="1024" counter :error-messages="errors.body"
       />
     </v-card>
 

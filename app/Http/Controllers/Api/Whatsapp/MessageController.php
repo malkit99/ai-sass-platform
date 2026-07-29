@@ -8,9 +8,11 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\WhatsappCreditBalance;
 use App\Models\WhatsappCreditLedger;
+use App\Models\WhatsappContact;
 use App\Models\WhatsappTemplate;
 use App\Rules\ValidMobileNumber;
 use App\Services\Whatsapp\BridgeClient;
+use App\Services\Whatsapp\TemplateVariables;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
@@ -33,6 +35,10 @@ class MessageController extends Controller
             'template_id' => ['required_if:type,template', 'nullable', 'integer', 'exists:whatsapp_templates,id'],
             'body' => ['required_if:type,text', 'nullable', 'string', 'max:4096'],
             'media_url' => ['required_if:type,media', 'nullable', 'string', 'url'],
+            // Per-variable values typed into the form when the selected
+            // template contains {{...}} placeholders.
+            'variables' => ['nullable', 'array'],
+            'variables.*' => ['nullable', 'string', 'max:500'],
         ]);
 
         $channel = Channel::findOrFail($data['channel_id']);
@@ -44,21 +50,39 @@ class MessageController extends Controller
         // media kind to send (image/video/document/audio) instead of having
         // to guess one from the media_url's file extension.
         $mediaType = null;
+        $interactiveConfig = null;
 
         if ($data['type'] === 'template') {
             $template = WhatsappTemplate::findOrFail($data['template_id']);
 
-            if (! in_array($template->type, WhatsappTemplate::SENDABLE_TYPES, true)) {
+            if (! in_array($template->type, WhatsappTemplate::ALL_SENDABLE_TYPES, true)) {
                 throw ValidationException::withMessages([
                     'template_id' => ['This template type cannot be sent yet.'],
                 ]);
             }
 
             $data['body'] = $template->body;
-            $data['media_url'] = $template->media_url;
-            $mediaType = $template->mediaKind();
-            $data['type'] = $mediaType ? 'media' : 'text';
+
+            if ($interactiveKind = $template->interactiveKind()) {
+                $data['type'] = $interactiveKind;
+                $interactiveConfig = $template->buildInteractiveConfig();
+            } else {
+                $data['media_url'] = $template->media_url;
+                $mediaType = $template->mediaKind();
+                $data['type'] = $mediaType ? 'media' : 'text';
+            }
         }
+
+        // {{...}} placeholders resolve from (in priority order) the form's
+        // typed variable values, then the phone's contact row if one exists
+        // (name + CSV-imported params), then {{phone}} itself. Empty typed
+        // values fall back rather than blanking a known contact value.
+        $contact = WhatsappContact::where('phone', $data['phone'])->first();
+        $typedVariables = array_filter($data['variables'] ?? [], fn ($value) => $value !== null && $value !== '');
+        $data['body'] = TemplateVariables::render(
+            $data['body'] ?? null,
+            [...TemplateVariables::forContact($data['phone'], $contact), ...$typedVariables],
+        );
 
         $account = Auth::user()->account;
         $balance = WhatsappCreditBalance::forAccount($account);
@@ -111,6 +135,7 @@ class MessageController extends Controller
                 $data['body'] ?? null,
                 $data['media_url'] ?? null,
                 $mediaType,
+                $interactiveConfig,
             );
 
             $message->update([
