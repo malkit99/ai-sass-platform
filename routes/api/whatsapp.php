@@ -12,9 +12,14 @@ use App\Http\Controllers\Api\Whatsapp\FormController;
 use App\Http\Controllers\Api\Whatsapp\FormPublicController;
 use App\Http\Controllers\Api\Whatsapp\GroupController;
 use App\Http\Controllers\Api\Whatsapp\MessageController;
+use App\Http\Controllers\Api\Whatsapp\MessageHistoryController;
+use App\Http\Controllers\Api\Whatsapp\PublicApi\GroupApiController;
+use App\Http\Controllers\Api\Whatsapp\PublicApi\InstanceApiController;
+use App\Http\Controllers\Api\Whatsapp\PublicApi\MessageApiController;
 use App\Http\Controllers\Api\Whatsapp\ShortLinkController;
 use App\Http\Controllers\Api\Whatsapp\TemplateController;
 use App\Http\Controllers\Api\Whatsapp\WebhookController;
+use App\Http\Controllers\Api\Whatsapp\WhatsappApiSettingsController;
 use Illuminate\Support\Facades\Route;
 
 // Loaded via Route::prefix('whatsapp')->group(...) in routes/api.php — every
@@ -35,6 +40,7 @@ Route::middleware(['auth:sanctum', 'trial.active'])->group(function () {
     Route::delete('/channels/{channel}', [ChannelController::class, 'destroy']);
 
     Route::post('/messages', [MessageController::class, 'store']);
+    Route::get('/messages/history', [MessageHistoryController::class, 'index']);
 
     Route::get('/campaigns', [CampaignController::class, 'index']);
     Route::post('/campaigns', [CampaignController::class, 'store']);
@@ -92,6 +98,9 @@ Route::middleware(['auth:sanctum', 'trial.active'])->group(function () {
     Route::delete('/forms/{form}', [FormController::class, 'destroy']);
     Route::get('/forms/{form}/submissions', [FormController::class, 'submissions']);
     Route::get('/forms/{form}/submissions/export', [FormController::class, 'exportSubmissions']);
+
+    Route::get('/api-settings', [WhatsappApiSettingsController::class, 'show']);
+    Route::put('/api-settings', [WhatsappApiSettingsController::class, 'update']);
 });
 
 // Server-to-server only (Node bridge → Laravel), authenticated via HMAC
@@ -103,3 +112,21 @@ Route::post('/webhook', WebhookController::class);
 // tenant-scoped model touched here is scoped explicitly instead.
 Route::get('/forms/{slug}/public', [FormPublicController::class, 'show']);
 Route::post('/forms/{slug}/submit', [FormPublicController::class, 'submit']);
+
+// Public REST API (screenshots 38-50) — external automation tools (Zapier,
+// n8n, etc.), never a browser session. Auth is instance_id + access_token
+// (see ResolvesPublicApiChannel), deliberately outside auth:sanctum — same
+// reasoning as the bridge webhook and the public form endpoints above.
+Route::post('/create_instance', [InstanceApiController::class, 'createInstance']);
+Route::get('/get_qrcode', [InstanceApiController::class, 'getQrCode']);
+Route::post('/set_webhook', [InstanceApiController::class, 'setWebhook']);
+Route::post('/reboot', [InstanceApiController::class, 'reboot']);
+Route::post('/reset_instance', [InstanceApiController::class, 'resetInstance']);
+Route::post('/reconnect', [InstanceApiController::class, 'reconnect']);
+
+Route::post('/send', [MessageApiController::class, 'send']);
+Route::post('/send_template', [MessageApiController::class, 'sendTemplate']);
+Route::post('/send_by_template', [MessageApiController::class, 'sendByTemplate']);
+
+Route::get('/get_groups', [GroupApiController::class, 'getGroups']);
+Route::post('/send_group', [GroupApiController::class, 'sendGroup']);

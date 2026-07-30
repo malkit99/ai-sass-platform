@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Whatsapp;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\Whatsapp\ForwardExternalWebhookJob;
 use App\Jobs\Whatsapp\RejectCallJob;
 use App\Jobs\Whatsapp\SendAutoReplyJob;
 use App\Models\Channel;
@@ -69,6 +70,11 @@ class WebhookController extends Controller
             'profile_name' => $request->input('profile_name') ?? $channel->profile_name,
             'profile_phone' => $request->input('profile_phone') ?? $channel->profile_phone,
         ]);
+
+        $this->forwardExternal($channel, 'connection.update', [
+            'instance_id' => $channel->id,
+            'status' => $status,
+        ]);
     }
 
     private function handleInboundMessage(Channel $channel, Request $request): void
@@ -98,7 +104,33 @@ class WebhookController extends Controller
 
         $conversation->update(['last_message_at' => now()]);
 
+        $this->forwardExternal($channel, 'message.inbound', [
+            'instance_id' => $channel->id,
+            'phone' => $data['phone'],
+            'name' => $data['name'] ?? null,
+            'type' => $data['type'] ?? 'text',
+            'body' => $data['body'] ?? null,
+            'media_url' => $data['media_url'] ?? null,
+        ]);
+
         $this->maybeAutoReply($channel, $conversation, $data['body'] ?? null);
+    }
+
+    /**
+     * Public REST API's set_webhook (screenshot 38) — a no-op unless the
+     * channel owner has opted in via InstanceApiController::setWebhook().
+     */
+    private function forwardExternal(Channel $channel, string $event, array $data): void
+    {
+        if (! $channel->external_webhook_enabled || ! $channel->external_webhook_url) {
+            return;
+        }
+
+        ForwardExternalWebhookJob::dispatch(
+            $channel->external_webhook_url,
+            $channel->access_token,
+            ['event' => $event, ...$data],
+        );
     }
 
     /**

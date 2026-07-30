@@ -13,7 +13,9 @@ import ChatbotPanel from './components/ChatbotPanel.vue'
 import LinkGeneratorPanel from './components/LinkGeneratorPanel.vue'
 import GroupsPanel from './components/GroupsPanel.vue'
 import CallResponderPanel from './components/CallResponderPanel.vue'
+import MessageHistoryPanel from './components/MessageHistoryPanel.vue'
 import FormsModulePanel from './components/FormsModulePanel.vue'
+import ApiPanel from './components/ApiPanel.vue'
 import ConnectAccountPanel from './components/ConnectAccountPanel.vue'
 import SendMessagePanel from './components/SendMessagePanel.vue'
 import ContactsPanel from './components/ContactsPanel.vue'
@@ -124,7 +126,9 @@ async function onConnected() {
       <LinkGeneratorPanel v-else-if="active === 'links'" />
       <GroupsPanel v-else-if="active === 'groups'" />
       <CallResponderPanel v-else-if="active === 'call-responder'" />
+      <MessageHistoryPanel v-else-if="active === 'message-history'" />
       <FormsModulePanel v-else-if="active === 'forms'" />
+      <ApiPanel v-else-if="active === 'api'" />
 
       <ConnectAccountPanel
         v-else-if="active === 'connect'"

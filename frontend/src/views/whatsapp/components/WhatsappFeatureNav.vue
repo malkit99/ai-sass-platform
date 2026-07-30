@@ -25,7 +25,9 @@ const features = [
   { key: 'links', label: 'Link Generator', icon: 'mdi-link-variant', color: '#00897B' },
   { key: 'groups', label: 'Export Participants', icon: 'mdi-file-export-outline', color: '#1E88E5' },
   { key: 'call-responder', label: 'Call Responder', icon: 'mdi-phone-alert-outline', color: '#E53935' },
+  { key: 'message-history', label: 'Message History', icon: 'mdi-history', color: '#546E7A' },
   { key: 'forms', label: 'Form Builder', icon: 'mdi-file-document-edit-outline', color: '#5E35B1' },
+  { key: 'api', label: 'API', icon: 'mdi-xml', color: '#00ACC1' },
 ]
 
 const contactFeatures = [

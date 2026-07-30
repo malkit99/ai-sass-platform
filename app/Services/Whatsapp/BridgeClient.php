@@ -89,6 +89,22 @@ class BridgeClient
     }
 
     /**
+     * Public REST API's get_groups — every group the connected instance
+     * currently participates in (id/name/participant count only; use
+     * fetchGroupParticipants for a specific group's full member list).
+     */
+    public function listGroups(int $channelId): array
+    {
+        $response = $this->http()->get("/instances/{$channelId}/groups");
+
+        if ($response->failed()) {
+            throw new \RuntimeException($response->json('error') ?? $response->body());
+        }
+
+        return $response->json('groups') ?? [];
+    }
+
+    /**
      * Which of the given phone numbers are actually registered on WhatsApp
      * (Baileys' onWhatsApp — a lookup, not a message send) — powers the
      * contacts "Validate" action.

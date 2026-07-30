@@ -28,8 +28,11 @@ function sessionPath(channelId) {
   return path.join(SESSIONS_DIR, String(channelId));
 }
 
+// Group sends (Public REST API's send_group) address a full JID already
+// ({id}@g.us), not a bare phone number — wrapping it again would produce
+// "{id}@g.us@s.whatsapp.net". Only bare numbers get the domain appended.
 function toJid(phone) {
-  return `${phone}@s.whatsapp.net`;
+  return phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
 }
 
 // The authenticated socket's own jid ("919628061241:14@s.whatsapp.net") and a
@@ -299,6 +302,28 @@ export async function fetchGroupParticipants(channelId, groupJid) {
       admin: p.admin ?? null,
     })),
   };
+}
+
+/**
+ * Public REST API's get_groups — unlike fetchGroupParticipants (one already-
+ * known group, full participant list), this lists every group the connected
+ * account currently participates in via Baileys' groupFetchAllParticipating,
+ * with just id/subject/participant count — a live API call, not the passive
+ * whatsapp_groups discovery Export Participants uses.
+ */
+export async function listGroups(channelId) {
+  const entry = instances.get(channelId);
+  if (!entry || entry.status !== 'connected') {
+    throw new Error('Instance not connected');
+  }
+
+  const groups = await entry.sock.groupFetchAllParticipating();
+
+  return Object.values(groups ?? {}).map((g) => ({
+    group_id: g.id,
+    name: g.subject || null,
+    participant_count: (g.participants ?? []).length,
+  }));
 }
 
 /**

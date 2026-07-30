@@ -79,6 +79,15 @@ app.get('/instances/:channelId/groups/:jid/participants', async (req, res) => {
   }
 });
 
+app.get('/instances/:channelId/groups', async (req, res) => {
+  try {
+    const groups = await sessions.listGroups(req.params.channelId);
+    res.json({ groups });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.post('/instances/:channelId/calls/:callId/reject', async (req, res) => {
   try {
     await sessions.rejectCall(req.params.channelId, req.params.callId, req.body.call_from);

@@ -29,6 +29,8 @@ class Channel extends Model
         'status',
         'connected_at',
         'warmup_started_at',
+        'external_webhook_url',
+        'external_webhook_enabled',
     ];
 
     protected function casts(): array
@@ -37,6 +39,7 @@ class Channel extends Model
             'credentials' => 'encrypted:array',
             'connected_at' => 'datetime',
             'warmup_started_at' => 'datetime',
+            'external_webhook_enabled' => 'boolean',
         ];
     }
 

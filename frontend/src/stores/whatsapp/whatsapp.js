@@ -22,6 +22,9 @@ export const useWhatsappStore = defineStore('whatsapp', {
     contacts: [],
     contactsMeta: null,
     contactsLoading: false,
+    messageHistory: [],
+    messageHistoryMeta: null,
+    messageHistoryLoading: false,
   }),
   actions: {
     async fetchDashboard() {
@@ -84,6 +87,19 @@ export const useWhatsappStore = defineStore('whatsapp', {
     updateChannelStatus(channelId, status) {
       const channel = this.channels.find((c) => c.id === channelId)
       if (channel) channel.status = status
+    },
+
+    async fetchMessageHistory(channelId, { search = '', direction = null, type = null, status = null, page = 1 } = {}) {
+      this.messageHistoryLoading = true
+      try {
+        const { data } = await api.get('/api/whatsapp/messages/history', {
+          params: { channel_id: channelId, search: search || undefined, direction, type, status, page },
+        })
+        this.messageHistory = data.data
+        this.messageHistoryMeta = { currentPage: data.current_page, lastPage: data.last_page, total: data.total }
+      } finally {
+        this.messageHistoryLoading = false
+      }
     },
 
     async fetchCampaigns() {
@@ -374,6 +390,15 @@ export const useWhatsappStore = defineStore('whatsapp', {
     },
     async deleteContact(groupId, contactId) {
       await api.delete(`/api/whatsapp/contact-groups/${groupId}/contacts/${contactId}`)
+    },
+
+    async fetchApiSettings() {
+      const { data } = await api.get('/api/whatsapp/api-settings')
+      return data
+    },
+    async updateApiSettings(enabledGroups) {
+      const { data } = await api.put('/api/whatsapp/api-settings', { enabled_groups: enabledGroups })
+      return data
     },
   },
   getters: {
