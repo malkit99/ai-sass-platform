@@ -10,6 +10,13 @@ export const useWhatsappStore = defineStore('whatsapp', {
     autoresponders: [],
     chatbotRules: [],
     templates: [],
+    shortLinks: [],
+    groups: [],
+    callResponderSettings: null,
+    callHistory: [],
+    forms: [],
+    formsDashboard: null,
+    formSubmissions: [],
     dashboard: null,
     contactGroups: [],
     contacts: [],
@@ -151,6 +158,129 @@ export const useWhatsappStore = defineStore('whatsapp', {
     async deleteChatbotRule(id) {
       await api.delete(`/api/whatsapp/chatbot-rules/${id}`)
       this.chatbotRules = this.chatbotRules.filter((r) => r.id !== id)
+    },
+
+    async fetchShortLinks(channelId) {
+      const { data } = await api.get('/api/whatsapp/short-links', { params: { channel_id: channelId } })
+      this.shortLinks = data
+    },
+    async createShortLink(payload) {
+      const { data } = await api.post('/api/whatsapp/short-links', payload)
+      this.shortLinks.unshift(data)
+      return data
+    },
+    async deleteShortLink(id) {
+      await api.delete(`/api/whatsapp/short-links/${id}`)
+      this.shortLinks = this.shortLinks.filter((l) => l.id !== id)
+    },
+
+    async fetchGroups(channelId) {
+      const { data } = await api.get('/api/whatsapp/groups', { params: { channel_id: channelId } })
+      this.groups = data
+    },
+    async exportGroupParticipants(group) {
+      let response
+      try {
+        response = await api.get(`/api/whatsapp/groups/${group.id}/export`, { responseType: 'blob' })
+      } catch (e) {
+        // responseType: 'blob' means a failed request's body also arrives as
+        // a Blob, not parsed JSON — e.response.data.message would otherwise
+        // always be undefined and callers would only ever see a generic
+        // fallback error, never the bridge's actual failure reason (e.g.
+        // "Instance not connected").
+        if (e.response?.data instanceof Blob) {
+          try {
+            e.response.data = JSON.parse(await e.response.data.text())
+          } catch {
+            // Non-JSON error body (e.g. an HTML error page) — leave as-is.
+          }
+        }
+        throw e
+      }
+
+      const url = URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${group.name || group.group_jid}-participants.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+    },
+
+    async fetchCallResponderSettings(channelId) {
+      const { data } = await api.get('/api/whatsapp/call-responder/settings', { params: { channel_id: channelId } })
+      this.callResponderSettings = data
+      return data
+    },
+    async saveCallResponderSettings(payload) {
+      const { data } = await api.put('/api/whatsapp/call-responder/settings', payload)
+      this.callResponderSettings = data
+      return data
+    },
+    async fetchCallHistory(channelId) {
+      const { data } = await api.get('/api/whatsapp/call-responder/history', { params: { channel_id: channelId } })
+      this.callHistory = data
+    },
+
+    async fetchForms() {
+      const { data } = await api.get('/api/whatsapp/forms')
+      this.forms = data
+    },
+    async fetchFormsDashboard() {
+      const { data } = await api.get('/api/whatsapp/forms/dashboard')
+      this.formsDashboard = data
+    },
+    async createForm(payload) {
+      const { data } = await api.post('/api/whatsapp/forms', payload)
+      this.forms.unshift(data)
+      return data
+    },
+    async updateForm(id, payload) {
+      const { data } = await api.patch(`/api/whatsapp/forms/${id}`, payload)
+      const index = this.forms.findIndex((f) => f.id === id)
+      if (index !== -1) this.forms[index] = data
+      return data
+    },
+    async deleteForm(id) {
+      await api.delete(`/api/whatsapp/forms/${id}`)
+      this.forms = this.forms.filter((f) => f.id !== id)
+    },
+    async fetchFormSubmissions(formId) {
+      const { data } = await api.get(`/api/whatsapp/forms/${formId}/submissions`)
+      this.formSubmissions = data
+    },
+    async exportFormSubmissions(form) {
+      let response
+      try {
+        response = await api.get(`/api/whatsapp/forms/${form.id}/submissions/export`, { responseType: 'blob' })
+      } catch (e) {
+        // See exportGroupParticipants — responseType: 'blob' means a failed
+        // request's error body also arrives as a Blob, not parsed JSON.
+        if (e.response?.data instanceof Blob) {
+          try {
+            e.response.data = JSON.parse(await e.response.data.text())
+          } catch {
+            // Non-JSON error body — leave as-is.
+          }
+        }
+        throw e
+      }
+
+      const url = URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${form.name}-submissions.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+    },
+
+    // Public — no auth, used by the standalone form-fill page.
+    async fetchPublicForm(slug) {
+      const { data } = await api.get(`/api/whatsapp/forms/${slug}/public`)
+      return data
+    },
+    async submitPublicForm(slug, formData) {
+      const { data } = await api.post(`/api/whatsapp/forms/${slug}/submit`, formData)
+      return data
     },
 
     async fetchTemplates() {

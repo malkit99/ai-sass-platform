@@ -31,10 +31,20 @@ class DashboardController extends Controller
 
         $direct = $outboundThisMonth->filter(fn ($m) => $m->sent_by === null || is_numeric($m->sent_by));
         $bulk = $outboundThisMonth->filter(fn ($m) => str_starts_with((string) $m->sent_by, 'campaign:'));
-        $auto = $outboundThisMonth->filter(fn ($m) => $m->sent_by === 'auto_reply');
+        $auto = $outboundThisMonth->filter(fn ($m) => str_starts_with((string) $m->sent_by, 'chatbot:') || str_starts_with((string) $m->sent_by, 'autoresponder:'));
 
         $bulkDelivered = $bulk->where('status', 'sent')->count();
         $bulkTotal = $bulk->count();
+
+        // All-time (not month-scoped) total of messages a chatbot item has
+        // sent — mirrors the reference app's Chatbot landing screen "Sent"
+        // stat (screenshot 88), which reads as a running total, not "this
+        // month".
+        $chatbotSentCount = Message::query()
+            ->where('direction', Message::DIRECTION_OUT)
+            ->whereHas('conversation', fn ($q) => $q->where('account_id', $account->id))
+            ->where('sent_by', 'like', 'chatbot:%')
+            ->count();
 
         return response()->json([
             'credits' => [
@@ -48,6 +58,8 @@ class DashboardController extends Controller
             ],
             'autoresponder_active_count' => WhatsappAutoresponder::query()->where('enabled', true)->count(),
             'chatbot_active_count' => WhatsappChatbotRule::query()->where('enabled', true)->count(),
+            'chatbot_items_count' => WhatsappChatbotRule::query()->count(),
+            'chatbot_sent_count' => $chatbotSentCount,
             'message_distribution' => [
                 'direct' => $direct->count(),
                 'bulk' => $bulk->count(),

@@ -1,13 +1,18 @@
 <?php
 
 use App\Http\Controllers\Api\Whatsapp\AutoresponderController;
+use App\Http\Controllers\Api\Whatsapp\CallResponderController;
 use App\Http\Controllers\Api\Whatsapp\CampaignController;
 use App\Http\Controllers\Api\Whatsapp\ChannelController;
 use App\Http\Controllers\Api\Whatsapp\ChatbotRuleController;
 use App\Http\Controllers\Api\Whatsapp\ContactController;
 use App\Http\Controllers\Api\Whatsapp\ContactGroupController;
 use App\Http\Controllers\Api\Whatsapp\DashboardController;
+use App\Http\Controllers\Api\Whatsapp\FormController;
+use App\Http\Controllers\Api\Whatsapp\FormPublicController;
+use App\Http\Controllers\Api\Whatsapp\GroupController;
 use App\Http\Controllers\Api\Whatsapp\MessageController;
+use App\Http\Controllers\Api\Whatsapp\ShortLinkController;
 use App\Http\Controllers\Api\Whatsapp\TemplateController;
 use App\Http\Controllers\Api\Whatsapp\WebhookController;
 use Illuminate\Support\Facades\Route;
@@ -68,8 +73,33 @@ Route::middleware(['auth:sanctum', 'trial.active'])->group(function () {
     Route::post('/templates', [TemplateController::class, 'store']);
     Route::patch('/templates/{template}', [TemplateController::class, 'update']);
     Route::delete('/templates/{template}', [TemplateController::class, 'destroy']);
+
+    Route::get('/short-links', [ShortLinkController::class, 'index']);
+    Route::post('/short-links', [ShortLinkController::class, 'store']);
+    Route::delete('/short-links/{link}', [ShortLinkController::class, 'destroy']);
+
+    Route::get('/groups', [GroupController::class, 'index']);
+    Route::get('/groups/{group}/export', [GroupController::class, 'export']);
+
+    Route::get('/call-responder/settings', [CallResponderController::class, 'settings']);
+    Route::put('/call-responder/settings', [CallResponderController::class, 'updateSettings']);
+    Route::get('/call-responder/history', [CallResponderController::class, 'history']);
+
+    Route::get('/forms', [FormController::class, 'index']);
+    Route::get('/forms/dashboard', [FormController::class, 'dashboard']);
+    Route::post('/forms', [FormController::class, 'store']);
+    Route::patch('/forms/{form}', [FormController::class, 'update']);
+    Route::delete('/forms/{form}', [FormController::class, 'destroy']);
+    Route::get('/forms/{form}/submissions', [FormController::class, 'submissions']);
+    Route::get('/forms/{form}/submissions/export', [FormController::class, 'exportSubmissions']);
 });
 
 // Server-to-server only (Node bridge → Laravel), authenticated via HMAC
 // signature in WebhookController — deliberately outside the auth:sanctum group.
 Route::post('/webhook', WebhookController::class);
+
+// Public, unauthenticated — a visitor filling out a published form has no
+// account/session. See FormPublicController's own docblock for how every
+// tenant-scoped model touched here is scoped explicitly instead.
+Route::get('/forms/{slug}/public', [FormPublicController::class, 'show']);
+Route::post('/forms/{slug}/submit', [FormPublicController::class, 'submit']);

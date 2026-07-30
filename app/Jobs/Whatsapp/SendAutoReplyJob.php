@@ -39,6 +39,7 @@ class SendAutoReplyJob implements ShouldQueue
         private readonly ?string $body,
         private readonly ?string $mediaUrl,
         private readonly ?array $interactiveConfig,
+        private readonly string $sentBy = 'auto_reply',
     ) {}
 
     public function handle(BridgeClient $bridge): void
@@ -69,7 +70,7 @@ class SendAutoReplyJob implements ShouldQueue
                 'body' => $body,
                 'media_url' => $this->mediaUrl,
                 'status' => 'sent',
-                'sent_by' => 'auto_reply',
+                'sent_by' => $this->sentBy,
             ]);
 
             $conversation->update(['last_message_at' => now()]);

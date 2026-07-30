@@ -106,6 +106,51 @@ class BridgeClient
         return $response->json('results') ?? [];
     }
 
+    /**
+     * On-demand group metadata + participant list (Export Participants,
+     * screenshot 90's "Download" action) — requires the instance connected,
+     * see sessionManager.js's fetchGroupParticipants.
+     *
+     * @return array{name: ?string, participants: array<int, array{phone: string, admin: ?string}>}
+     */
+    public function fetchGroupParticipants(int $channelId, string $groupJid): array
+    {
+        $response = $this->http()->get("/instances/{$channelId}/groups/".rawurlencode($groupJid).'/participants');
+
+        if ($response->failed()) {
+            throw new \RuntimeException($response->json('error') ?? $response->body());
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Call Responder's "Auto-Reject Incoming Calls" action (screenshot 93) —
+     * a real reject stanza, not a hangup of an actual answered call (Baileys
+     * never has live audio to hang up in the first place). Callers should
+     * treat this as best-effort — a failed reject shouldn't block logging the
+     * call or sending whatever text reply still makes sense.
+     *
+     * Baileys' rejectCall() awaits query(stanza) with no explicit timeout,
+     * which means it inherits the fork's defaultQueryTimeoutMs (60s — see
+     * whatsapp-bridge/node_modules/@itsliaaa/baileys/lib/Socket/socket.js and
+     * Defaults) before it gracefully resolves even if WhatsApp's servers
+     * never send back a distinct ack for the reject. The default 15s client
+     * timeout here was giving up 45s before the bridge could ever respond —
+     * confirmed live via repeated "cURL error 28: timed out after ~15000ms
+     * with 0 bytes received". Runs inside RejectCallJob (queued), so a
+     * longer wait here just makes that job take longer, not blocking any
+     * webhook/HTTP request.
+     */
+    public function rejectCall(int $channelId, string $callId, string $callFrom): void
+    {
+        $response = $this->http()->timeout(65)->post("/instances/{$channelId}/calls/{$callId}/reject", ['call_from' => $callFrom]);
+
+        if ($response->failed()) {
+            throw new \RuntimeException($response->json('error') ?? $response->body());
+        }
+    }
+
     public function logout(int $channelId): void
     {
         try {

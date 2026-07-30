@@ -96,7 +96,7 @@ export async function createInstance(channelId) {
     version,
   });
 
-  const entry = { sock, status: 'connecting', qr: null, contacts: new Map() };
+  const entry = { sock, status: 'connecting', qr: null, contacts: new Map(), autoRejectedCallIds: new Set(), callJids: new Map() };
   instances.set(channelId, entry);
 
   sock.ev.on('creds.update', saveCreds);
@@ -161,7 +161,24 @@ export async function createInstance(channelId) {
     if (type !== 'notify') return;
 
     for (const msg of messages) {
-      if (msg.key.fromMe || !msg.message) continue;
+      if (!msg.message) continue;
+
+      // Group traffic (@g.us) is never a 1:1 conversation — phoneFromJid()
+      // on a group JID produces a garbage "phone number", which used to
+      // silently create bogus conversations and could even fire an
+      // autoresponder/chatbot reply at a non-address. Record that the group
+      // exists (Export Participants discovery, screenshot 90's "send a
+      // message to the group" step) instead of routing it through the
+      // normal inbound-message path. Checked *before* the fromMe filter
+      // below — the discovery step is naturally a message the connected
+      // account itself sends into the group, which is exactly what fromMe
+      // would otherwise skip.
+      if (msg.key.remoteJid?.endsWith('@g.us')) {
+        await sendWebhook('group.seen', { channel_id: channelId, group_jid: msg.key.remoteJid });
+        continue;
+      }
+
+      if (msg.key.fromMe) continue;
 
       const remoteJid = await resolveToPhoneJid(sock, msg.key.remoteJid);
 
@@ -173,6 +190,50 @@ export async function createInstance(channelId) {
         body: extractText(msg.message),
         external_id: msg.key.id,
       });
+    }
+  });
+
+  // Call Responder (screenshots 93/94) — Baileys only ever sees call
+  // *signaling* (ring/answer/reject/hangup), never actual audio/video, so
+  // this can only auto-reject + send a text reply, never join a call. The
+  // reply-routing decision (which of the 4 templates to send) lives in
+  // Laravel; this just forwards each raw status change plus whether *we*
+  // were the one who rejected it (autoRejectedCallIds, set by rejectCall()
+  // below) so Laravel can tell "auto-rejected by us" apart from "declined on
+  // the phone itself" without guessing.
+  //
+  // call.from can arrive as a @lid (Linked ID — an opaque identifier, not a
+  // real phone number) just like inbound messages can — see
+  // resolveToPhoneJid() above. The *webhook* always sends the resolved real
+  // phone number (needed for Laravel to actually message the caller back —
+  // a raw @lid value stored as "the phone number" would be silently
+  // accepted by WhatsApp's send API and never delivered, confirmed live).
+  // The *reject* stanza is the opposite: it needs call.from's original raw
+  // JID exactly as WhatsApp sent it, not the resolved phone number — kept
+  // in entry.callJids so rejectCall() below doesn't have to round-trip a
+  // JID through Laravel and risk it coming back malformed.
+  sock.ev.on('call', async ([call]) => {
+    if (call.isGroup) return;
+
+    if (call.from) {
+      entry.callJids.set(call.id, call.from);
+    }
+
+    const terminal = call.status === 'reject' || call.status === 'timeout' || call.status === 'terminate';
+    const resolvedJid = await resolveToPhoneJid(sock, call.from);
+
+    await sendWebhook('call.event', {
+      channel_id: channelId,
+      call_id: call.id,
+      phone: phoneFromJid(resolvedJid),
+      is_video: !!call.isVideo,
+      status: call.status,
+      auto_rejected: entry.autoRejectedCallIds.has(call.id),
+    });
+
+    if (terminal) {
+      entry.autoRejectedCallIds.delete(call.id);
+      entry.callJids.delete(call.id);
     }
   });
 
@@ -215,6 +276,53 @@ export async function checkNumbersOnWhatsapp(channelId, phones) {
   const existsByPhone = new Map(results.map((r) => [phoneFromJid(r.jid), r.exists]));
 
   return phones.map((phone) => ({ phone, exists: existsByPhone.get(phone) ?? false }));
+}
+
+/**
+ * On-demand group metadata + participant list (Export Participants,
+ * screenshot 90's "Download" action) — Baileys' groupMetadata, not something
+ * cached passively like device contacts, since it's only needed at export
+ * time and group membership can change between exports.
+ */
+export async function fetchGroupParticipants(channelId, groupJid) {
+  const entry = instances.get(channelId);
+  if (!entry || entry.status !== 'connected') {
+    throw new Error('Instance not connected');
+  }
+
+  const metadata = await entry.sock.groupMetadata(groupJid);
+
+  return {
+    name: metadata.subject || null,
+    participants: (metadata.participants ?? []).map((p) => ({
+      phone: phoneFromJid(p.id),
+      admin: p.admin ?? null,
+    })),
+  };
+}
+
+/**
+ * Call Responder's "Auto-Reject Incoming Calls" action — sends a real reject
+ * stanza (sock.rejectCall, confirmed present in this fork's messages-recv.js)
+ * and marks the call so the 'call' listener above tells Laravel this was an
+ * auto-reject, not the phone itself declining.
+ *
+ * Prefers entry.callJids' remembered *raw* JID from the original offer event
+ * over the $callFrom argument (which Laravel only has as the already-resolved
+ * phone number, no @domain suffix) — sock.rejectCall's stanza needs the full
+ * original JID (possibly @lid, not a plain phone number) to correctly
+ * address the reject. Falls back to the argument only if the bridge doesn't
+ * have it (e.g. restarted mid-call) — best-effort, matches how this whole
+ * action is already treated as best-effort by its caller.
+ */
+export async function rejectCall(channelId, callId, callFrom) {
+  const entry = instances.get(channelId);
+  if (!entry || entry.status !== 'connected') {
+    throw new Error('Instance not connected');
+  }
+
+  entry.autoRejectedCallIds.add(callId);
+  await entry.sock.rejectCall(callId, entry.callJids.get(callId) ?? callFrom);
 }
 
 export async function requestPairingCode(channelId, phoneNumber) {

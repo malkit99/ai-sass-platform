@@ -6,11 +6,13 @@ import dashboardRoutes from './routes/dashboard'
 import crmRoutes from './routes/crm'
 import whatsappRoutes from './routes/whatsapp'
 import fileManagerRoutes from './routes/file-manager'
+import publicRoutes from './routes/public'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     ...authRoutes,
+    ...publicRoutes,
     {
       path: '/',
       component: DefaultLayout,

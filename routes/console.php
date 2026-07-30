@@ -12,6 +12,12 @@ Artisan::command('inspire', function () {
 // app/Console/Commands/PruneActivityLogs.php for why.
 Schedule::command('app:prune-activity-logs')->daily();
 
+// Same reasoning, applied to WhatsApp call history and stale/idle group
+// data — see app/Console/Commands/PruneWhatsappCallLogs.php and
+// PruneWhatsappGroups.php.
+Schedule::command('app:prune-whatsapp-call-logs')->daily();
+Schedule::command('app:prune-whatsapp-groups')->daily();
+
 // Catches WhatsApp bridge crashes/restarts that never fired a disconnect
 // webhook — see app/Console/Commands/SyncWhatsappChannelStatuses.php for why.
 Schedule::command('app:sync-whatsapp-channel-statuses')->everyFiveMinutes();

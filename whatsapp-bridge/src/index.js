@@ -70,6 +70,24 @@ app.post('/instances/:channelId/check-numbers', async (req, res) => {
   }
 });
 
+app.get('/instances/:channelId/groups/:jid/participants', async (req, res) => {
+  try {
+    const result = await sessions.fetchGroupParticipants(req.params.channelId, req.params.jid);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/instances/:channelId/calls/:callId/reject', async (req, res) => {
+  try {
+    await sessions.rejectCall(req.params.channelId, req.params.callId, req.body.call_from);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.delete('/instances/:channelId', async (req, res) => {
   await sessions.logout(req.params.channelId);
   res.json({ status: 'disconnected' });

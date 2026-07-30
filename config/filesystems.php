@@ -106,6 +106,10 @@ return [
                 'r2' => ['bucket' => env('R2_BUCKET_EXPORTS'), 'url' => env('R2_URL_EXPORTS')],
                 's3' => ['bucket' => env('AWS_BUCKET_EXPORTS'), 'url' => env('AWS_URL_EXPORTS')],
             ],
+            'form_uploads' => [
+                'r2' => ['bucket' => env('R2_BUCKET_FORM_UPLOAD'), 'url' => env('R2_URL_FORM_UPLOAD')],
+                's3' => ['bucket' => env('AWS_BUCKET_FORM_UPLOAD'), 'url' => env('AWS_URL_FORM_UPLOAD')],
+            ],
         ],
     ],
 

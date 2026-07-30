@@ -10,6 +10,10 @@ import TemplatesPanel from './components/TemplatesPanel.vue'
 import BulkCampaignsPanel from './components/BulkCampaignsPanel.vue'
 import AutoresponderPanel from './components/AutoresponderPanel.vue'
 import ChatbotPanel from './components/ChatbotPanel.vue'
+import LinkGeneratorPanel from './components/LinkGeneratorPanel.vue'
+import GroupsPanel from './components/GroupsPanel.vue'
+import CallResponderPanel from './components/CallResponderPanel.vue'
+import FormsModulePanel from './components/FormsModulePanel.vue'
 import ConnectAccountPanel from './components/ConnectAccountPanel.vue'
 import SendMessagePanel from './components/SendMessagePanel.vue'
 import ContactsPanel from './components/ContactsPanel.vue'
@@ -116,7 +120,11 @@ async function onConnected() {
 
       <BulkCampaignsPanel v-else-if="active === 'bulk'" @connect-channel="connectExisting" />
       <AutoresponderPanel v-else-if="active === 'autoresponder'" />
-      <ChatbotPanel v-else-if="active === 'chatbot'" />
+      <ChatbotPanel v-else-if="active === 'chatbot'" @connect-channel="connectExisting" />
+      <LinkGeneratorPanel v-else-if="active === 'links'" />
+      <GroupsPanel v-else-if="active === 'groups'" />
+      <CallResponderPanel v-else-if="active === 'call-responder'" />
+      <FormsModulePanel v-else-if="active === 'forms'" />
 
       <ConnectAccountPanel
         v-else-if="active === 'connect'"

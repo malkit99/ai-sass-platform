@@ -16,7 +16,7 @@ use RuntimeException;
  */
 class MediaStorage
 {
-    public const PURPOSES = ['whatsapp_media', 'exports'];
+    public const PURPOSES = ['whatsapp_media', 'exports', 'form_uploads'];
 
     public static function disk(string $purpose): Filesystem
     {
