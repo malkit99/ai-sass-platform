@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { useWhatsappStore } from '@/stores/whatsapp/whatsapp'
 import { useAlertStore } from '@/stores/alert/alert'
 import WhatsappFeatureNav from './components/WhatsappFeatureNav.vue'
@@ -16,6 +17,7 @@ import CallResponderPanel from './components/CallResponderPanel.vue'
 import MessageHistoryPanel from './components/MessageHistoryPanel.vue'
 import FormsModulePanel from './components/FormsModulePanel.vue'
 import ApiPanel from './components/ApiPanel.vue'
+import BotBuilderModulePanel from './components/BotBuilderModulePanel.vue'
 import ConnectAccountPanel from './components/ConnectAccountPanel.vue'
 import SendMessagePanel from './components/SendMessagePanel.vue'
 import ContactsPanel from './components/ContactsPanel.vue'
@@ -23,8 +25,12 @@ import { fireConfirm } from '@core/plugins/sweetalert'
 
 const whatsapp = useWhatsappStore()
 const alertStore = useAlertStore()
+const route = useRoute()
 
-const active = ref('dashboard')
+// Set when returning from the standalone bot-flow editor route (see
+// router/routes/botFlowEditor.js), so "Back" lands on Bot Builder instead
+// of resetting to the WhatsApp Analytics dashboard.
+const active = ref(route.query.feature || 'dashboard')
 const activeChannel = ref(null)
 
 onMounted(async () => {
@@ -129,6 +135,7 @@ async function onConnected() {
       <MessageHistoryPanel v-else-if="active === 'message-history'" />
       <FormsModulePanel v-else-if="active === 'forms'" />
       <ApiPanel v-else-if="active === 'api'" />
+      <BotBuilderModulePanel v-else-if="active === 'bot-builder'" />
 
       <ConnectAccountPanel
         v-else-if="active === 'connect'"

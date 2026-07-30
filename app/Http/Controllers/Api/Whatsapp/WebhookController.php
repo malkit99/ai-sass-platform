@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Api\Whatsapp;
 use App\Http\Controllers\Controller;
 use App\Jobs\Whatsapp\ForwardExternalWebhookJob;
 use App\Jobs\Whatsapp\RejectCallJob;
+use App\Jobs\Whatsapp\RunBotFlowJob;
 use App\Jobs\Whatsapp\SendAutoReplyJob;
 use App\Models\Channel;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\WhatsappAutoresponder;
+use App\Models\WhatsappBotFlow;
+use App\Models\WhatsappBotSession;
 use App\Models\WhatsappCallLog;
 use App\Models\WhatsappCallResponderSetting;
 use App\Models\WhatsappChatbotRule;
@@ -113,7 +116,45 @@ class WebhookController extends Controller
             'media_url' => $data['media_url'] ?? null,
         ]);
 
-        $this->maybeAutoReply($channel, $conversation, $data['body'] ?? null);
+        if (! $this->maybeRunBotFlow($channel, $conversation, $data['body'] ?? null)) {
+            $this->maybeAutoReply($channel, $conversation, $data['body'] ?? null);
+        }
+    }
+
+    /**
+     * Bot Builder (screenshots 54-62) — checked *before* chatbot rules/
+     * autoresponder, since a conversation already mid-flow must claim every
+     * subsequent message no matter what (e.g. a user typing their name to a
+     * waiting Input node shouldn't accidentally match an unrelated chatbot
+     * keyword rule instead). Returns true if this message was claimed by a
+     * bot flow (started or resumed), so the caller skips the existing
+     * chatbot/autoresponder chain entirely.
+     */
+    private function maybeRunBotFlow(Channel $channel, Conversation $conversation, ?string $inboundBody): bool
+    {
+        $activeSession = WhatsappBotSession::where('conversation_id', $conversation->id)
+            ->where('status', WhatsappBotSession::STATUS_ACTIVE)
+            ->first();
+
+        if ($activeSession) {
+            RunBotFlowJob::dispatch($conversation->id, RunBotFlowJob::MODE_RESUME, null, $inboundBody);
+
+            return true;
+        }
+
+        $bot = WhatsappBotFlow::withoutGlobalScopes()
+            ->where('channel_id', $channel->id)
+            ->where('status', WhatsappBotFlow::STATUS_ACTIVE)
+            ->get()
+            ->first(fn (WhatsappBotFlow $bot) => $bot->matchesTrigger($inboundBody));
+
+        if ($bot) {
+            RunBotFlowJob::dispatch($conversation->id, RunBotFlowJob::MODE_START, $bot->id);
+
+            return true;
+        }
+
+        return false;
     }
 
     /**

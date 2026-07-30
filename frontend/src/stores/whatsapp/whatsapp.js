@@ -25,6 +25,9 @@ export const useWhatsappStore = defineStore('whatsapp', {
     messageHistory: [],
     messageHistoryMeta: null,
     messageHistoryLoading: false,
+    botFlows: [],
+    botFlowsDashboard: null,
+    botCredentials: [],
   }),
   actions: {
     async fetchDashboard() {
@@ -399,6 +402,65 @@ export const useWhatsappStore = defineStore('whatsapp', {
     async updateApiSettings(enabledGroups) {
       const { data } = await api.put('/api/whatsapp/api-settings', { enabled_groups: enabledGroups })
       return data
+    },
+
+    async fetchBotFlows() {
+      const { data } = await api.get('/api/whatsapp/bot-flows')
+      this.botFlows = data
+    },
+    async fetchBotFlow(id) {
+      const { data } = await api.get(`/api/whatsapp/bot-flows/${id}`)
+      return data
+    },
+    async fetchBotFlowsDashboard() {
+      const { data } = await api.get('/api/whatsapp/bot-flows/dashboard')
+      this.botFlowsDashboard = data
+    },
+    async createBotFlow(payload) {
+      const { data } = await api.post('/api/whatsapp/bot-flows', payload)
+      this.botFlows.unshift(data)
+      return data
+    },
+    async updateBotFlow(id, payload) {
+      const { data } = await api.patch(`/api/whatsapp/bot-flows/${id}`, payload)
+      const index = this.botFlows.findIndex((b) => b.id === id)
+      if (index !== -1) this.botFlows[index] = data
+      return data
+    },
+    async deleteBotFlow(id) {
+      await api.delete(`/api/whatsapp/bot-flows/${id}`)
+      this.botFlows = this.botFlows.filter((b) => b.id !== id)
+    },
+    async importBotFlow(channelId, file) {
+      const formData = new FormData()
+      formData.append('channel_id', channelId)
+      formData.append('file', file)
+      const { data } = await api.post('/api/whatsapp/bot-flows/import', formData)
+      this.botFlows.unshift(data)
+      return data
+    },
+    async exportBotFlow(bot) {
+      const response = await api.get(`/api/whatsapp/bot-flows/${bot.id}/export`, { responseType: 'blob' })
+      const url = URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${bot.name || 'bot'}.json`
+      link.click()
+      URL.revokeObjectURL(url)
+    },
+
+    async fetchBotCredentials() {
+      const { data } = await api.get('/api/whatsapp/bot-credentials')
+      this.botCredentials = data
+    },
+    async createBotCredential(payload) {
+      const { data } = await api.post('/api/whatsapp/bot-credentials', payload)
+      this.botCredentials.unshift(data)
+      return data
+    },
+    async deleteBotCredential(id) {
+      await api.delete(`/api/whatsapp/bot-credentials/${id}`)
+      this.botCredentials = this.botCredentials.filter((c) => c.id !== id)
     },
   },
   getters: {

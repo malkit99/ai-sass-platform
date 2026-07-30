@@ -28,6 +28,7 @@ const features = [
   { key: 'message-history', label: 'Message History', icon: 'mdi-history', color: '#546E7A' },
   { key: 'forms', label: 'Form Builder', icon: 'mdi-file-document-edit-outline', color: '#5E35B1' },
   { key: 'api', label: 'API', icon: 'mdi-xml', color: '#00ACC1' },
+  { key: 'bot-builder', label: 'Bot Builder', icon: 'mdi-robot-happy-outline', color: '#D81B60' },
 ]
 
 const contactFeatures = [

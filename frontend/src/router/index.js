@@ -7,12 +7,14 @@ import crmRoutes from './routes/crm'
 import whatsappRoutes from './routes/whatsapp'
 import fileManagerRoutes from './routes/file-manager'
 import publicRoutes from './routes/public'
+import botFlowEditorRoutes from './routes/botFlowEditor'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     ...authRoutes,
     ...publicRoutes,
+    ...botFlowEditorRoutes,
     {
       path: '/',
       component: DefaultLayout,

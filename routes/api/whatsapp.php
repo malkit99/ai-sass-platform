@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\Whatsapp\AutoresponderController;
+use App\Http\Controllers\Api\Whatsapp\BotCredentialController;
+use App\Http\Controllers\Api\Whatsapp\BotFlowController;
 use App\Http\Controllers\Api\Whatsapp\CallResponderController;
 use App\Http\Controllers\Api\Whatsapp\CampaignController;
 use App\Http\Controllers\Api\Whatsapp\ChannelController;
@@ -101,6 +103,19 @@ Route::middleware(['auth:sanctum', 'trial.active'])->group(function () {
 
     Route::get('/api-settings', [WhatsappApiSettingsController::class, 'show']);
     Route::put('/api-settings', [WhatsappApiSettingsController::class, 'update']);
+
+    Route::get('/bot-flows', [BotFlowController::class, 'index']);
+    Route::get('/bot-flows/dashboard', [BotFlowController::class, 'dashboard']);
+    Route::post('/bot-flows', [BotFlowController::class, 'store']);
+    Route::post('/bot-flows/import', [BotFlowController::class, 'import']);
+    Route::get('/bot-flows/{bot}', [BotFlowController::class, 'show']);
+    Route::patch('/bot-flows/{bot}', [BotFlowController::class, 'update']);
+    Route::delete('/bot-flows/{bot}', [BotFlowController::class, 'destroy']);
+    Route::get('/bot-flows/{bot}/export', [BotFlowController::class, 'export']);
+
+    Route::get('/bot-credentials', [BotCredentialController::class, 'index']);
+    Route::post('/bot-credentials', [BotCredentialController::class, 'store']);
+    Route::delete('/bot-credentials/{credential}', [BotCredentialController::class, 'destroy']);
 });
 
 // Server-to-server only (Node bridge → Laravel), authenticated via HMAC
